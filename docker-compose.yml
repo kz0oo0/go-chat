@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  gochat:
+    build: .
+    container_name: gochat
+    restart: always
+    ports:
+      - "80:8080" # 左側(80)がOracleCloudで受けるポート、右側(8080)がアプリのポート
+    volumes:
+      - ./data:/app/data # 永続化したいデータを紐付け

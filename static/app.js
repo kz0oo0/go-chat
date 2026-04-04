@@ -1,0 +1,1219 @@
+/**
+ * GoChat — クライアントサイドスクリプト
+ *
+ * 機能:
+ * - WebSocket接続・メッセージ管理
+ * - 通常チャット / 面接練習（部屋コード付き） / GD練習 の3モード
+ * - 画像アップロード（fetch + FormData）
+ * - 画像拡大モーダル
+ * - GD共有メモのリアルタイム同期
+ * - 面接官専用チャット（面接官ロールのみ受信）
+ */
+
+'use strict';
+
+console.log('GoChat Client v2.1 (Sync Enhanced) Loading...');
+
+/* ═══════════════════════════════════════════════════════════
+   状態管理
+═══════════════════════════════════════════════════════════ */
+const state = {
+  username:     '',
+  mode:         'chat',   // 'chat' | 'interview' | 'gd'
+  role:         '',
+  ws:           null,
+  isConnected:  false,
+  selectedFile: null,
+  sendTarget:   'main',   // 'main' | 'sub'（面接練習時）
+  currentRoom:  'main',   // 'main' | 'secret'（ルーム切替）
+  gdNote: {               // GD共有メモの現在値
+    theme: '', premise: '', issues: '',
+    opinions: '', conclusion: '', summary: '',
+    editMode: 'secretary',
+  },
+  noteUpdateTimer: null,  // メモ自動送信用タイマー
+  activeDmUser: null,     // 現在DMを開いている相手のユーザー名
+  dmHistory: {},          // 相手名 → DMメッセージ配列
+  passcode: '',           // 部屋コード
+};
+
+/* ═══════════════════════════════════════════════════════════
+   DOM要素
+═══════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+
+const el = {
+  // 画面
+  loginScreen:    $('login-screen'),
+  chatScreen:     $('chat-screen'),
+
+  // 入室フォーム
+  inputUsername:  $('input-username'),
+  passcodeGroup:  $('passcode-group'),
+  inputPasscode:  $('input-passcode'),
+  usernameError:  $('username-error'),
+  modeCards:      document.querySelectorAll('input[name="mode"]'),
+  roleGroup:      $('role-group'),
+  selectRole:     $('select-role'),
+  btnJoin:        $('btn-join'),
+
+  // ヘッダー
+  headerModeBadge: $('header-mode-badge'),
+  headerRoleBadge: $('header-role-badge'),
+  headerPasscodeBadge: $('header-passcode-badge'),
+  headerUsername:  $('header-username'),
+
+  // タブ（スマホ）
+  mobileTabs:   $('mobile-tabs'),
+  tabChat:      $('tab-chat'),
+  tabSub:       $('tab-sub'),
+
+  // パネル
+  chatFooter:   document.querySelector('.chat-footer'),
+  panelMain:    $('panel-main'),
+  panelSub:     $('panel-sub'),
+  messages:     $('messages'),
+  interviewerPanel: $('interviewer-panel'),
+  interviewerMessages: $('interviewer-messages'),
+  gdPanel:      $('gd-panel'),
+
+  // GDメモ
+  noteTheme:      $('note-theme'),
+  notePremise:    $('note-premise'),
+  noteIssues:     $('note-issues'),
+  noteOpinions:   $('note-opinions'),
+  noteConclusion: $('note-conclusion'),
+  noteSummary:    $('note-summary'),
+  notePrivate:    $('note-private'),
+  noteEditControl: $('note-edit-control'),
+  btnToggleEditMode: $('btn-toggle-edit-mode'),
+  btnClearNote:      $('btn-clear-note'),
+
+  // 入力エリア
+  inputTargetSelector: $('input-target-selector'),
+  btnTargetMain:  $('btn-target-main'),
+  btnTargetSub:   $('btn-target-sub'),
+  inputMessage:   $('input-message'),
+  btnImage:       $('btn-image'),
+  fileInput:      $('file-input'),
+  imagePrevArea:  $('image-preview-area'),
+  imagePrevThumb: $('image-preview-thumb'),
+  btnRemoveImage: $('btn-remove-image'),
+  btnSend:        $('btn-send'),
+
+  // ルーム切替
+  roomSelector:  $('room-selector'),
+  secretMessages: $('secret-messages'),
+  chatPanelTitle: $('chat-panel-title'),
+
+  // モーダル
+  imageModal:   $('image-modal'),
+  modalOverlay: $('modal-overlay'),
+  modalClose:   $('modal-close'),
+  modalImage:   $('modal-image'),
+
+  // ステータス
+  connStatus:   $('connection-status'),
+  reconnectToast: $('reconnect-toast'),
+
+  // モード切替パネル
+  btnSwitchMode:     $('btn-switch-mode'),
+  modeSwitchOverlay: $('mode-switch-overlay'),
+  modeSwitchBackdrop:$('mode-switch-backdrop'),
+  btnCloseModeSwitch:$('btn-close-mode-switch'),
+  swModeRadios:      document.querySelectorAll('input[name="sw-mode"]'),
+  swPasscodeGroup:   $('sw-passcode-group'),
+  swInputPasscode:   $('sw-input-passcode'),
+  swRoleGroup:       $('sw-role-group'),
+  swSelectRole:      $('sw-select-role'),
+  btnApplyMode:      $('btn-apply-mode'),
+
+  // サイドバー（ユーザーリスト）
+  userCountBadge:    $('user-count-badge'),
+  userList:          $('user-list'),
+
+  // DMパネル
+  dmOverlay:         $('dm-overlay'),
+  dmPanelUsername:   $('dm-panel-username'),
+  btnCloseDm:        $('btn-close-dm'),
+  dmMessages:        $('dm-messages'),
+  dmInput:           $('dm-input'),
+  btnDmSend:         $('btn-dm-send'),
+};
+
+/* ═══════════════════════════════════════════════════════════
+   役割定義
+═══════════════════════════════════════════════════════════ */
+const ROLES = {
+  chat: [],
+  interview: [
+    { value: 'interviewer',  label: '面接官' },
+    { value: 'student',      label: '就活生' },
+    { value: 'observer',     label: '見学者' },
+  ],
+  gd: [
+    { value: 'leader',      label: 'リーダー' },
+    { value: 'timekeeper',  label: 'タイムキーパー' },
+    { value: 'secretary',   label: '書記' },
+    { value: 'presenter',   label: '発表者' },
+    { value: 'observer',    label: '見学者' },
+    { value: 'interviewer', label: '面接官' },
+  ],
+};
+
+const MODE_LABELS = {
+  chat:      '通常チャット',
+  interview: '面接練習',
+  gd:        'GD練習',
+};
+
+const ROLE_LABELS = {
+  interviewer:  '面接官',
+  student:      '就活生',
+  observer:     '見学者',
+  leader:       'リーダー',
+  timekeeper:   'タイムキーパー',
+  secretary:    '書記',
+  presenter:    '発表者',
+  participant:  '参加者',
+};
+
+/* ═══════════════════════════════════════════════════════════
+   入室フォームのロジック
+═══════════════════════════════════════════════════════════ */
+
+/** モード変更時にUIを更新する (役割と部屋コードの出し分け) */
+function onModeChange(mode) {
+  state.mode = mode;
+
+  // 役割の出し分け
+  const roles = ROLES[mode];
+  if (!roles || roles.length === 0) {
+    el.roleGroup.classList.add('hidden');
+    state.role = '';
+  } else {
+    el.selectRole.innerHTML = roles
+      .map(r => `<option value="${r.value}">${r.label}</option>`)
+      .join('');
+    state.role = roles[0].value;
+    el.roleGroup.classList.remove('hidden');
+  }
+
+  // 部屋コードは常に表示（個人間やり取り用）
+  el.passcodeGroup.classList.remove('hidden');
+}
+
+/** モードカードのchange検知 */
+el.modeCards.forEach(radio => {
+  radio.addEventListener('change', () => onModeChange(radio.value));
+});
+
+/** 役割セレクト変更 */
+el.selectRole.addEventListener('change', () => {
+  state.role = el.selectRole.value;
+});
+
+/** 入室ボタン */
+el.btnJoin.addEventListener('click', () => joinChat());
+
+/** Enterキーで入室 */
+el.inputUsername.addEventListener('keydown', e => {
+  if (e.key === 'Enter') joinChat();
+});
+
+function joinChat() {
+  const name = el.inputUsername.value.trim();
+  if (!name) {
+    el.usernameError.classList.remove('hidden');
+    el.inputUsername.classList.add('input-error');
+    el.inputUsername.focus();
+    return;
+  }
+
+  el.usernameError.classList.add('hidden');
+  el.inputUsername.classList.remove('input-error');
+
+  state.username = name;
+  state.passcode = el.inputPasscode.value.trim();
+  state.mode     = document.querySelector('input[name="mode"]:checked')?.value || 'chat';
+  state.role     = el.selectRole.value || '';
+
+  // 画面遷移
+  el.loginScreen.classList.add('hidden');
+  el.chatScreen.classList.remove('hidden');
+
+  // ヘッダー更新
+  el.headerUsername.textContent = `👤 ${state.username}`;
+  updateHeaderBadges();
+
+  // UIのモード設定
+  setupModeUI();
+
+  // WebSocket接続
+  connectWebSocket();
+}
+
+/** ヘッダーのバッジを更新 */
+function updateHeaderBadges() {
+  if (!el.headerModeBadge) return;
+  el.headerModeBadge.textContent = MODE_LABELS[state.mode] || state.mode;
+  
+  if (state.role) {
+    el.headerRoleBadge.textContent = ROLE_LABELS[state.role] || state.role;
+    el.headerRoleBadge.classList.remove('hidden');
+  } else {
+    el.headerRoleBadge.classList.add('hidden');
+  }
+
+  // 部屋コードバッジ
+  if (state.passcode) {
+    el.headerPasscodeBadge.textContent = `🔑 ${state.passcode}`;
+    el.headerPasscodeBadge.classList.remove('hidden');
+  } else {
+    el.headerPasscodeBadge.classList.add('hidden');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   モード別UIセットアップ
+═══════════════════════════════════════════════════════════ */
+function setupModeUI() {
+  const { mode, role } = state;
+
+  // まずすべてのサブUI要素をリセット
+  el.panelSub.classList.add('hidden');
+  el.mobileTabs.classList.add('hidden');
+  el.inputTargetSelector.classList.add('hidden');
+  el.interviewerPanel.classList.add('hidden');
+  el.gdPanel.classList.add('hidden');
+  el.noteEditControl.classList.add('hidden');
+  el.panelMain.classList.remove('hidden');
+  el.chatFooter.classList.remove('hidden');
+
+  // 送信先を全体に戻す
+  setSendTarget('main');
+
+  // ── 通常チャット ──────────────────────────
+  if (mode === 'chat') return;
+
+  // ── 面接練習 ──────────────────────────────
+  if (mode === 'interview') {
+    if (role === 'interviewer') {
+      el.interviewerPanel.classList.remove('hidden');
+      showSubPanel();
+      el.inputTargetSelector.classList.remove('hidden');
+      el.tabSub.textContent = '面接官チャット';
+    }
+    return;
+  }
+
+  // ── GD練習 ────────────────────────────────
+  if (mode === 'gd') {
+    el.gdPanel.classList.remove('hidden');
+    showSubPanel();
+    el.tabSub.textContent = '共有メモ';
+    if (role !== 'observer') {
+      el.noteEditControl.classList.remove('hidden');
+    }
+    updateNoteEditability();
+    setupNoteListeners();
+  }
+}
+
+/** サブパネルを表示（PC + スマホタブ） */
+function showSubPanel() {
+  el.panelSub.classList.remove('hidden');
+
+  // スマホタブ表示
+  if (window.innerWidth <= 768) {
+    el.mobileTabs.classList.remove('hidden');
+    switchTab('chat');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   スマホタブ切替
+═══════════════════════════════════════════════════════════ */
+el.tabChat.addEventListener('click', () => switchTab('chat'));
+el.tabSub.addEventListener('click',  () => switchTab('sub'));
+
+function switchTab(tab) {
+  const isMobile = window.innerWidth <= 768;
+  if (!isMobile) return;
+
+  el.tabChat.classList.toggle('active', tab === 'chat');
+  el.tabSub.classList.toggle('active',  tab === 'sub');
+
+  if (tab === 'chat') {
+    el.panelMain.style.display = '';
+    el.panelSub.style.display  = 'none';
+  } else {
+    el.panelMain.style.display = 'none';
+    el.panelSub.style.display  = '';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   WebSocket接続
+═══════════════════════════════════════════════════════════ */
+function connectWebSocket() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const wsUrl = `${proto}://${location.host}/ws`;
+
+  state.ws = new WebSocket(wsUrl);
+
+  state.ws.addEventListener('open', () => {
+    state.isConnected = true;
+    setConnectionStatus('connected');
+
+    // joinメッセージを送信
+    sendWsMessage({
+      type:     'join',
+      username: state.username,
+      mode:     state.mode,
+      role:     state.role,
+      passcode: state.passcode,
+    });
+  });
+
+  state.ws.addEventListener('message', e => {
+    const lines = e.data.split('\n').filter(l => l.trim());
+    for (const line of lines) {
+      try {
+        const msg = JSON.parse(line);
+        handleMessage(msg);
+      } catch (err) {
+        console.error('JSON parse error:', err, line);
+      }
+    }
+  });
+
+  state.ws.addEventListener('close', () => {
+    state.isConnected = false;
+    setConnectionStatus('disconnected');
+    el.reconnectToast.classList.remove('hidden');
+  });
+
+  state.ws.addEventListener('error', err => {
+    console.error('WebSocket error:', err);
+    setConnectionStatus('disconnected');
+  });
+}
+
+function sendWsMessage(obj) {
+  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+    try {
+      state.ws.send(JSON.stringify(obj));
+      return true;
+    } catch (e) {
+      console.error('WebSocket送信エラー:', e);
+      return false;
+    }
+  }
+  console.warn('WebSocketが接続されていません。');
+  return false;
+}
+
+function setConnectionStatus(status) {
+  el.connStatus.className = `status-dot status-${status}`;
+  const titles = { connecting:'接続中...', connected:'接続済み', disconnected:'切断' };
+  el.connStatus.title = titles[status] || status;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   メッセージ受信ハンドラ
+═══════════════════════════════════════════════════════════ */
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'text':
+      appendTextMessage(msg, el.messages);
+      break;
+
+    case 'image':
+      appendImageMessage(msg, el.messages);
+      break;
+
+    case 'system':
+      appendSystemMessage(msg.content, el.messages);
+      break;
+
+    case 'secret_chat':
+      appendTextMessage(msg, el.secretMessages);
+      // シークレットルームを見ていない場合は通知
+      if (state.currentRoom !== 'secret') {
+        markSecretUnread();
+      }
+      break;
+
+    case 'interviewer_chat':
+      if (state.role !== 'interviewer') return;
+      appendTextMessage(msg, el.interviewerMessages, true);
+      break;
+
+    case 'note_update':
+      if (msg.note) applyNoteUpdate(msg.note);
+      break;
+
+    case 'clear_note':
+      clearGDNoteUI();
+      break;
+
+    case 'history_sep':
+      appendHistorySep(msg.content);
+      break;
+
+    case 'deleted':
+      appendDeletedPlaceholder(msg, el.messages);
+      break;
+
+    case 'delete':
+      handleDeleteEvent(msg.id);
+      break;
+
+    case 'user_list':
+      updateUserList(msg.users);
+      break;
+
+    case 'dm':
+      handleDmMessage(msg);
+      break;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   メッセージ表示
+═══════════════════════════════════════════════════════════ */
+
+/** タイムスタンプを HH:MM 形式に変換 */
+function formatTime(ts) {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit' });
+  } catch { return ''; }
+}
+
+function isMine(username) {
+  return username === state.username;
+}
+
+/** テキストメッセージをDOMに追加 */
+function appendTextMessage(msg, container, isInterviewerChat = false) {
+  const mine = isMine(msg.username);
+  const div = document.createElement('div');
+  const classNames = [
+    'msg',
+    mine ? 'msg-mine' : 'msg-theirs',
+    isInterviewerChat ? 'msg-interviewer-chat' : '',
+  ];
+  div.className = classNames.filter(Boolean).join(' ');
+  
+  if (msg.id) div.dataset.msgId = msg.id;
+
+  div.innerHTML = `
+    <div class="msg-content-wrap">
+      ${!mine ? `<div class="msg-meta"><span class="msg-meta-name">${escHtml(msg.username)}</span><span>${formatTime(msg.timestamp)}</span></div>` : ''}
+      <div class="msg-bubble">${escHtml(msg.content)}</div>
+      ${mine ? `<div class="msg-meta"><span>${formatTime(msg.timestamp)}</span></div>` : ''}
+    </div>
+  `;
+
+  // 自分のメッセージに取り消しボタンを追加
+  if (mine && msg.id) {
+    const actions = document.createElement('div');
+    actions.className = 'msg-actions';
+    actions.innerHTML = `<button class="btn-delete-msg" title="取り消す" onclick="requestDelete('${escHtml(msg.id)}')">&#x2715;</button>`;
+    div.appendChild(actions);
+  }
+
+  container.appendChild(div);
+  scrollToBottom(container);
+}
+
+/** 画像メッセージをDOMに追加 */
+function appendImageMessage(msg, container) {
+  const mine = isMine(msg.username);
+  const div = document.createElement('div');
+  div.className = `msg ${mine ? 'msg-mine' : 'msg-theirs'}`;
+  if (msg.id) div.dataset.msgId = msg.id;
+
+  const contentWrap = document.createElement('div');
+  contentWrap.className = 'msg-content-wrap';
+  
+  contentWrap.innerHTML = `
+    ${!mine ? `<div class="msg-meta"><span class="msg-meta-name">${escHtml(msg.username)}</span><span>${formatTime(msg.timestamp)}</span></div>` : ''}
+  `;
+
+  const img = document.createElement('img');
+  img.src = msg.content;
+  img.alt = '画像';
+  img.className = 'msg-image';
+  img.loading = 'lazy';
+  img.addEventListener('click', () => openModal(msg.content));
+  contentWrap.appendChild(img);
+
+  if (mine) {
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta';
+    meta.innerHTML = `<span>${formatTime(msg.timestamp)}</span>`;
+    contentWrap.appendChild(meta);
+  }
+
+  div.appendChild(contentWrap);
+
+  if (msg.id) {
+    const actions = document.createElement('div');
+    actions.className = 'msg-actions';
+    actions.innerHTML = `<button class="btn-delete-msg" title="取り消す" onclick="requestDelete('${escHtml(msg.id)}')">&#x2715;</button>`;
+    div.appendChild(actions);
+  }
+
+  container.appendChild(div);
+  scrollToBottom(container);
+}
+
+/** システムメッセージをDOMに追加 */
+function appendSystemMessage(content, container) {
+  const div = document.createElement('div');
+  div.className = 'msg-system';
+  div.textContent = content;
+  container.appendChild(div);
+  scrollToBottom(container);
+}
+
+/** 履歴区切り表示と画面クリア */
+function appendHistorySep(type) {
+  if (type === 'start') {
+    el.messages.innerHTML = '';
+    el.interviewerMessages.innerHTML = '';
+    return;
+  }
+
+  const div = document.createElement('div');
+  div.className = 'history-sep';
+  div.textContent = type === 'start' ? '── 過去のメッセージ ──' : '── 新しいメッセージ ──';
+  el.messages.appendChild(div);
+}
+
+/** 履歴再生時の「取り消し済み」プレースホルダー */
+function appendDeletedPlaceholder(msg, container) {
+  const mine = isMine(msg.username);
+  const div = document.createElement('div');
+  div.className = `msg ${mine ? 'msg-mine' : 'msg-theirs'}`;
+  div.innerHTML = `
+    ${!mine ? `<div class="msg-meta"><span class="msg-meta-name">${escHtml(msg.username)}</span></div>` : ''}
+    <div class="msg-bubble msg-bubble-deleted">⧘ このメッセージは取り消されました</div>
+  `;
+  container.appendChild(div);
+  scrollToBottom(container);
+}
+
+/** リアルタイム削除イベント */
+function handleDeleteEvent(id) {
+  if (!id) return;
+  [el.messages, el.interviewerMessages, el.dmMessages].forEach(container => {
+    const msgEl = container.querySelector(`[data-msg-id="${CSS.escape(id)}"]`);
+    if (!msgEl) return;
+    msgEl.removeAttribute('data-msg-id');
+    msgEl.querySelectorAll('.msg-actions').forEach(a => a.remove());
+    const bubble = msgEl.querySelector('.msg-bubble');
+    if (bubble) {
+      bubble.className = 'msg-bubble msg-bubble-deleted';
+      bubble.innerHTML = 'このメッセージは取り消されました';
+    } else {
+      const img = msgEl.querySelector('.msg-image');
+      if (img) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'msg-bubble msg-bubble-deleted';
+        placeholder.innerHTML = '⧘ このメッセージは取り消されました';
+        img.replaceWith(placeholder);
+      }
+    }
+  });
+}
+
+/** 取り消しリクエスト（グローバル関数） */
+function requestDelete(id) {
+  sendWsMessage({ type: 'delete', id });
+}
+
+function scrollToBottom(container) {
+  container.scrollTop = container.scrollHeight;
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   メッセージ送信
+═══════════════════════════════════════════════════════════ */
+
+el.inputMessage.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+el.inputMessage.addEventListener('input', () => {
+  updateSendButton();
+  el.inputMessage.style.height = 'auto';
+  el.inputMessage.style.height = Math.min(el.inputMessage.scrollHeight, 120) + 'px';
+});
+
+el.btnSend.addEventListener('click', sendMessage);
+
+function updateSendButton() {
+  const hasText  = el.inputMessage.value.trim().length > 0;
+  const hasImage = state.selectedFile !== null;
+  el.btnSend.disabled = !hasText && !hasImage;
+}
+
+async function sendMessage() {
+  if (el.btnSend.disabled) return;
+
+  const text = el.inputMessage.value.trim();
+
+  if (state.selectedFile) {
+    await uploadAndSendImage(text);
+    return;
+  }
+
+  if (!text) return;
+
+  // シークレットルームの場合はsecret_chatとして送信
+  if (state.currentRoom === 'secret') {
+    sendWsMessage({ type: 'secret_chat', content: text, noHistory: true });
+  } else {
+    const msgType = (state.mode === 'interview' && state.sendTarget === 'sub')
+      ? 'interviewer_chat'
+      : 'text';
+    sendWsMessage({ type: msgType, content: text });
+  }
+
+  el.inputMessage.value = '';
+  el.inputMessage.style.height = 'auto';
+  updateSendButton();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   画像アップロード
+═══════════════════════════════════════════════════════════ */
+
+el.btnImage.addEventListener('click', () => el.fileInput.click());
+
+el.fileInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!allowedTypes.includes(file.type)) {
+    alert('対応していないファイル形式です（jpg/jpeg/png/webp のみ）');
+    el.fileInput.value = '';
+    return;
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    alert('ファイルサイズが大きすぎます（上限5MB）');
+    el.fileInput.value = '';
+    return;
+  }
+
+  state.selectedFile = file;
+
+  const reader = new FileReader();
+  reader.onload = ev => {
+    el.imagePrevThumb.src = ev.target.result;
+    el.imagePrevArea.classList.remove('hidden');
+  };
+  reader.readAsDataURL(file);
+
+  updateSendButton();
+});
+
+el.btnRemoveImage.addEventListener('click', () => {
+  clearSelectedImage();
+});
+
+function clearSelectedImage() {
+  state.selectedFile = null;
+  el.fileInput.value = '';
+  el.imagePrevThumb.src = '';
+  el.imagePrevArea.classList.add('hidden');
+  updateSendButton();
+}
+
+async function uploadAndSendImage(captionText) {
+  const file = state.selectedFile;
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append('image', file);
+
+  el.chatScreen.classList.add('uploading');
+  el.btnSend.disabled = true;
+
+  try {
+    const resp = await fetch('/upload', { method: 'POST', body: formData });
+    const json = await resp.json();
+
+    if (json.error) {
+      alert(`アップロード失敗: ${json.error}`);
+      return;
+    }
+
+    if (state.currentRoom === 'secret') {
+      sendWsMessage({ type: 'secret_chat', content: json.url, noHistory: true });
+      if (captionText) sendWsMessage({ type: 'secret_chat', content: captionText, noHistory: true });
+    } else {
+      const msgType = (state.mode === 'interview' && state.sendTarget === 'sub')
+        ? 'interviewer_chat'
+        : 'image';
+      sendWsMessage({ type: msgType, content: json.url });
+      if (captionText) sendWsMessage({ type: 'text', content: captionText });
+    }
+
+    el.inputMessage.value = '';
+    el.inputMessage.style.height = 'auto';
+    clearSelectedImage();
+  } catch (err) {
+    console.error('Upload error:', err);
+    alert('画像のアップロードに失敗しました');
+  } finally {
+    el.chatScreen.classList.remove('uploading');
+    updateSendButton();
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   面接練習: 送信先切替
+═══════════════════════════════════════════════════════════ */
+el.btnTargetMain.addEventListener('click', () => setSendTarget('main'));
+el.btnTargetSub.addEventListener('click',  () => setSendTarget('sub'));
+
+function setSendTarget(target) {
+  state.sendTarget = target;
+  el.btnTargetMain.classList.toggle('active', target === 'main');
+  el.btnTargetSub.classList.toggle('active',  target === 'sub');
+
+  const placeholder = target === 'sub'
+    ? '面接官専用チャットへ送信...'
+    : 'メッセージを入力... (Enter で送信, Shift+Enter で改行)';
+  el.inputMessage.placeholder = placeholder;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GD共有メモ
+═══════════════════════════════════════════════════════════ */
+
+const noteFields = [
+  { el: el.noteTheme,      key: 'theme' },
+  { el: el.notePremise,    key: 'premise' },
+  { el: el.noteIssues,     key: 'issues' },
+  { el: el.noteOpinions,   key: 'opinions' },
+  { el: el.noteConclusion, key: 'conclusion' },
+  { el: el.noteSummary,    key: 'summary' },
+];
+
+function setupNoteListeners() {
+  noteFields.forEach(({ el: textarea, key }) => {
+    textarea.addEventListener('input', () => {
+      if (!canEditNote()) return;
+      state.gdNote[key] = textarea.value;
+      clearTimeout(state.noteUpdateTimer);
+      state.noteUpdateTimer = setTimeout(sendNoteUpdate, 300);
+    });
+  });
+
+  // 自分用メモの処理（ローカル保存のみ）
+  if (el.notePrivate) {
+    el.notePrivate.value = localStorage.getItem('gd_private_memo') || '';
+    el.notePrivate.addEventListener('input', () => {
+      localStorage.setItem('gd_private_memo', el.notePrivate.value);
+    });
+  }
+}
+
+function canEditNote() {
+  const { editMode } = state.gdNote;
+  if (editMode === 'all') return true;
+  if (editMode === 'secretary' && state.role === 'secretary') return true;
+  return false;
+}
+
+function updateNoteEditability() {
+  const editable = canEditNote();
+  noteFields.forEach(({ el: textarea }) => {
+    textarea.disabled = !editable;
+  });
+
+  // 自分用メモは常に編集可能
+  if (el.notePrivate) {
+    el.notePrivate.disabled = false;
+  }
+
+  // バッジの表示切り替え
+  const badges = document.querySelectorAll('.note-readonly-badge');
+  badges.forEach(badge => {
+    if (editable) {
+      badge.classList.add('hidden');
+    } else {
+      badge.classList.remove('hidden');
+    }
+  });
+
+  // 編集権限の切替ボタンは書記のみ表示
+  if (el.btnToggleEditMode) {
+    el.btnToggleEditMode.classList.toggle('hidden', state.role !== 'secretary');
+    el.btnToggleEditMode.textContent =
+      state.gdNote.editMode === 'secretary' ? '書記のみ' : '全員';
+  }
+
+  // 削除ボタンの表示制御
+  if (el.btnClearNote) {
+    // 見学者以外なら削除ボタンを表示
+    el.btnClearNote.classList.toggle('hidden', state.role === 'observer');
+  }
+}
+
+el.btnToggleEditMode.addEventListener('click', () => {
+  if (state.role !== 'secretary') return;
+  state.gdNote.editMode = state.gdNote.editMode === 'secretary' ? 'all' : 'secretary';
+  updateNoteEditability();
+  sendNoteUpdate();
+});
+
+el.btnClearNote.addEventListener('click', () => {
+  if (state.role === 'observer') return;
+  console.log('DEBUG: Clear button clicked');
+  if (!confirm('共有メモ（自分用以外）をすべて削除してよろしいですか？')) return;
+
+  console.log('DEBUG: Sending clear_note message...');
+  // サーバーへ削除リクエスト送信
+  const sent = sendWsMessage({ type: 'clear_note' });
+  
+  if (sent) {
+    console.log('DEBUG: Clear_note message sent to server.');
+    clearGDNoteUI();
+  } else {
+    alert('サーバーとの接続が切れているため、削除できません。');
+  }
+});
+
+function clearGDNoteUI() {
+  const keys = ['theme', 'premise', 'issues', 'opinions', 'conclusion', 'summary'];
+  keys.forEach(k => {
+    state.gdNote[k] = '';
+    const textarea = $(`note-${k}`);
+    if (textarea) textarea.value = '';
+  });
+  clearTimeout(state.noteUpdateTimer);
+  state.gdNote.editMode = 'secretary';
+  updateNoteEditability();
+}
+
+function sendNoteUpdate() {
+  sendWsMessage({
+    type: 'note_update',
+    note: { ...state.gdNote },
+  });
+}
+
+function applyNoteUpdate(note) {
+  const focused = document.activeElement;
+  
+  // すべてのフィールドが空かチェック（一括削除の判定）
+  const keys = ['theme', 'premise', 'issues', 'opinions', 'conclusion', 'summary'];
+  const isAllEmpty = keys.every(k => !note[k]);
+
+  noteFields.forEach(({ el: textarea, key }) => {
+    if (note[key] !== undefined) {
+      // 内部状態はフォーカスに関わらず常に更新（上書き防止）
+      state.gdNote[key] = note[key];
+      
+      // UIの更新: フォーカスしていない場合、または一括削除（全空）の場合は強制反映
+      if (textarea !== focused || isAllEmpty) {
+        textarea.value = note[key];
+      }
+    }
+  });
+
+  if (note.editMode !== undefined) {
+    state.gdNote.editMode = note.editMode;
+    updateNoteEditability();
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   画像拡大モーダル
+═══════════════════════════════════════════════════════════ */
+function openModal(src) {
+  el.modalImage.src = src;
+  el.imageModal.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+  el.imageModal.classList.add('hidden');
+  el.modalImage.src = '';
+  document.body.style.overflow = '';
+}
+
+el.modalClose.addEventListener('click', closeModal);
+el.modalOverlay.addEventListener('click', closeModal);
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeModal();
+    closeModeSwitch();
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════
+   モード切替パネル
+═══════════════════════════════════════════════════════════ */
+
+/** モード切替パネルを開く */
+function openModeSwitch() {
+  // 現在の値をセット
+  const currentModeRadio = document.querySelector(`input[name="sw-mode"][value="${state.mode}"]`);
+  if (currentModeRadio) currentModeRadio.checked = true;
+  onSwModeChange(state.mode);
+  el.swSelectRole.value = state.role;
+  el.swInputPasscode.value = state.passcode;
+
+  el.modeSwitchOverlay.classList.remove('hidden');
+}
+
+/** パネルを閉じる */
+function closeModeSwitch() {
+  el.modeSwitchOverlay.classList.add('hidden');
+}
+
+/** 切替パネル内のモード選択変化 */
+function onSwModeChange(mode) {
+  const roles = ROLES[mode];
+  if (!roles || roles.length === 0) {
+    el.swRoleGroup.classList.add('hidden');
+  } else {
+    el.swSelectRole.innerHTML = roles
+      .map(r => `<option value="${r.value}">${r.label}</option>`)
+      .join('');
+    el.swRoleGroup.classList.remove('hidden');
+  }
+
+  // 部屋コードは常に表示
+  el.swPasscodeGroup.classList.remove('hidden');
+}
+
+/** モードを切替えて適用する */
+function applyModeSwitch() {
+  const newMode = document.querySelector('input[name="sw-mode"]:checked')?.value || 'chat';
+  const newRole = el.swSelectRole.value || '';
+  const newPass = el.swInputPasscode.value.trim();
+
+  const modeChanged = newMode !== state.mode;
+  const roleChanged = newRole !== state.role;
+  const passChanged = newPass !== state.passcode;
+
+  if (!modeChanged && !roleChanged && !passChanged) {
+    closeModeSwitch();
+    return;
+  }
+
+  state.mode = newMode;
+  state.role = newRole;
+  state.passcode = newPass;
+
+  // ヘッダーバッジ更新
+  updateHeaderBadges();
+
+  // サーバーへモード変更を通知
+  sendWsMessage({
+    type:     'mode_change',
+    mode:     newMode,
+    role:     newRole,
+    passcode: newPass,
+  });
+
+  // チャット内にシステムメッセージ表示
+  const modeLabel = MODE_LABELS[newMode];
+  const roleLabel = newRole ? `（${ROLE_LABELS[newRole] || newRole}）` : '';
+  appendSystemMessage(`モードを「${modeLabel}${roleLabel}」に切り替えました`, el.messages);
+
+  // UIを再構築
+  setupModeUI();
+  closeModeSwitch();
+}
+
+// イベントリスナー
+el.btnSwitchMode.addEventListener('click', openModeSwitch);
+el.btnCloseModeSwitch.addEventListener('click', closeModeSwitch);
+el.modeSwitchBackdrop.addEventListener('click', closeModeSwitch);
+el.btnApplyMode.addEventListener('click', applyModeSwitch);
+
+el.swModeRadios.forEach(radio => {
+  radio.addEventListener('change', () => onSwModeChange(radio.value));
+});
+
+/* ═══════════════════════════════════════════════════════════
+   オンラインユーザー＆DM機能
+═══════════════════════════════════════════════════════════ */
+
+function updateUserList(users) {
+  el.userCountBadge.textContent = users.length;
+  el.userList.innerHTML = '';
+
+  if (users.length === 0) {
+    el.userList.innerHTML = '<li class="user-list-empty">誰もいません</li>';
+    return;
+  }
+
+  const sorted = users.slice().sort((a, b) => {
+    if (a.username === state.username) return -1;
+    if (b.username === state.username) return 1;
+    return a.username.localeCompare(b.username);
+  });
+
+  sorted.forEach(u => {
+    const li = document.createElement('li');
+    li.className = 'user-list-item';
+    const isMe = u.username === state.username;
+    if (isMe) li.classList.add('is-me');
+
+    const roleLabel = u.role ? ROLE_LABELS[u.role] || u.role : '';
+    const roleHtml = roleLabel ? `<span class="user-role-badge">${roleLabel}</span>` : '';
+
+    li.innerHTML = `
+      <div class="user-status-dot"></div>
+      <div class="user-info">
+        <span class="user-name">${escHtml(u.username)}${isMe ? ' (あなた)' : ''}</span>
+        ${roleHtml}
+      </div>
+      ${!isMe ? `<button class="btn-dm-open" title="DMを送る" aria-label="DMを送る"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></button>` : ''}
+    `;
+
+    if (!isMe) {
+      li.addEventListener('click', () => openDmPanel(u.username));
+    }
+    el.userList.appendChild(li);
+  });
+}
+
+function openDmPanel(targetUser) {
+  state.activeDmUser = targetUser;
+  el.dmPanelUsername.textContent = targetUser;
+  el.dmOverlay.classList.remove('hidden');
+  el.dmInput.focus();
+
+  el.dmMessages.innerHTML = '';
+  const history = state.dmHistory[targetUser] || [];
+  history.forEach(msg => appendTextMessage(msg, el.dmMessages, false));
+  scrollToBottom(el.dmMessages);
+}
+
+function closeDmPanel() {
+  el.dmOverlay.classList.add('hidden');
+  state.activeDmUser = null;
+}
+
+el.btnCloseDm.addEventListener('click', closeDmPanel);
+
+function handleDmMessage(msg) {
+  const partner = msg.username === state.username ? msg.to : msg.username;
+  
+  state.dmHistory[partner] = state.dmHistory[partner] || [];
+  if (msg.id && state.dmHistory[partner].some(m => m.id === msg.id)) return;
+  state.dmHistory[partner].push(msg);
+
+  if (msg.username !== state.username && (!state.activeDmUser || state.activeDmUser !== partner)) {
+    openDmPanel(partner);
+  } else if (state.activeDmUser === partner) {
+    appendTextMessage(msg, el.dmMessages, false);
+  }
+}
+
+function sendDmMessage() {
+  const text = el.dmInput.value.trim();
+  if (!text || !state.activeDmUser || el.btnDmSend.disabled) return;
+
+  sendWsMessage({
+    type: 'dm',
+    to: state.activeDmUser,
+    content: text
+  });
+
+  el.dmInput.value = '';
+  updateDmSendButton();
+}
+
+el.dmInput.addEventListener('input', updateDmSendButton);
+el.dmInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendDmMessage();
+  }
+});
+el.btnDmSend.addEventListener('click', sendDmMessage);
+
+function updateDmSendButton() {
+  el.btnDmSend.disabled = el.dmInput.value.trim().length === 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ルーム切替（メイン ↔ シークレット）
+═══════════════════════════════════════════════════════════ */
+
+/** プルダウン変更時にルームを切替 */
+el.roomSelector.addEventListener('change', () => {
+  switchRoom(el.roomSelector.value);
+});
+
+/** ルームを切替える */
+function switchRoom(room) {
+  state.currentRoom = room;
+
+  if (room === 'secret') {
+    el.messages.classList.add('hidden');
+    el.secretMessages.classList.remove('hidden');
+    el.chatPanelTitle.textContent = '🔒 シークレット';
+    el.inputMessage.placeholder = 'シークレットルームへ送信... (履歴に残りません)';
+    el.roomSelector.classList.add('is-secret');
+    clearSecretUnread();
+  } else {
+    el.secretMessages.classList.add('hidden');
+    el.messages.classList.remove('hidden');
+    el.chatPanelTitle.textContent = '💬 チャット';
+    el.inputMessage.placeholder = 'メッセージを入力... (Enter で送信, Shift+Enter で改行)';
+    el.roomSelector.classList.remove('is-secret');
+  }
+
+  scrollToBottom(room === 'secret' ? el.secretMessages : el.messages);
+}
+
+/** シークレットルームの未読インジケーターを表示 */
+function markSecretUnread() {
+  const opt = el.roomSelector.querySelector('option[value="secret"]');
+  if (opt && !opt.textContent.includes('●')) {
+    opt.textContent = '🔒 シークレット ●';
+  }
+}
+
+/** 未読インジケーターをクリア */
+function clearSecretUnread() {
+  const opt = el.roomSelector.querySelector('option[value="secret"]');
+  if (opt) opt.textContent = '🔒 シークレット';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   初期化
+═══════════════════════════════════════════════════════════ */
+
+onModeChange('chat');
+updateSendButton();
+el.inputUsername.focus();

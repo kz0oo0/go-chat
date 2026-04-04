@@ -1,0 +1,1501 @@
+/* ═══════════════════════════════════════════════════════════
+   GoChat — スタイルシート
+   カラーパレット: ダークモード + パープルアクセント
+═══════════════════════════════════════════════════════════ */
+
+/* ── CSS変数（デザイントークン） ─────────────────────────── */
+:root {
+  color-scheme: dark;
+  --bg-primary:      #080810;
+  --bg-glass:        rgba(15, 15, 25, 0.7);
+  --bg-glass-heavy:  rgba(10, 10, 20, 0.9);
+  --bg-card:         rgba(25, 25, 45, 0.5);
+  --bg-input:        rgba(255, 255, 255, 0.05);
+  --bg-hover:        rgba(255, 255, 255, 0.1);
+  --border:          rgba(255, 255, 255, 0.08);
+  --border-light:    rgba(255, 255, 255, 0.12);
+
+  --accent:          #8b5cf6; /* 紫 */
+  --accent-hover:    #a78bfa;
+  --accent-dim:      rgba(139, 92, 246, 0.2);
+  --accent-dimmer:   rgba(139, 92, 246, 0.08);
+
+  --text-primary:    #f8fafc;
+  --text-secondary:  #94a3b8;
+  --text-muted:      #64748b;
+
+  --my-bubble-bg:    linear-gradient(135deg, #8b5cf6, #6366f1);
+  --my-bubble-text:  #ffffff;
+  --other-bubble-bg: rgba(255, 255, 255, 0.07);
+  --other-bubble-border: rgba(255, 255, 255, 0.1);
+
+  --system-text:     #94a3b8;
+  --system-bg:       rgba(255, 255, 255, 0.05);
+
+  --success:         #10b981;
+  --error:           #ef4444;
+  --warning:         #f59e0b;
+  --interviewer-accent: #f43f5e;
+  --interviewer-dim:    rgba(244, 63, 94, 0.15);
+
+  --radius-sm:   8px;
+  --radius-md:   14px;
+  --radius-lg:   20px;
+  --radius-xl:   28px;
+
+  --shadow-sm:  0 2px 8px rgba(0,0,0,0.3);
+  --shadow-md:  0 8px 32px rgba(0,0,0,0.4);
+  --shadow-lg:  0 12px 64px rgba(0,0,0,0.6);
+
+  --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── リセット & ベース ───────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Outfit', 'Inter', -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  background: 
+    radial-gradient(at 0% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(99, 102, 241, 0.1) 0px, transparent 50%),
+    var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.hidden { display: none !important; }
+
+/* ── スクロールバー ─────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* ════════════════════════════════════════════════════════════
+   入室画面
+════════════════════════════════════════════════════════════ */
+.login-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at 60% 20%, #1a1040 0%, var(--bg-primary) 70%);
+  z-index: 100;
+  padding: 16px;
+}
+
+.login-card {
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 48px 40px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(30px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.login-logo {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.logo-icon { font-size: 48px; display: block; margin-bottom: 8px; }
+
+.login-title {
+  font-size: 28px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.5px;
+}
+
+.login-subtitle {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.login-form { display: flex; flex-direction: column; gap: 20px; }
+
+/* ── フォーム共通 ────────────────────────────────────────── */
+.form-group { display: flex; flex-direction: column; gap: 8px; }
+
+.form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.form-input, .form-select {
+  background: var(--bg-input);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 15px;
+  font-family: inherit;
+  padding: 12px 16px;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  outline: none;
+  width: 100%;
+}
+
+.form-input:focus, .form-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.form-input::placeholder { color: var(--text-muted); }
+.form-select { cursor: pointer; appearance: none; }
+.form-select option {
+  background-color: #1e1e2e; /* ダークモードに合わせた濃い背景 */
+  color: var(--text-primary);
+}
+
+.form-error {
+  font-size: 12px;
+  color: var(--error);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── フォームヒント ─────────────────────────────────────── */
+.form-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: -2px;
+}
+
+.form-label-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ── モード選択カード ────────────────────────────────────── */
+.mode-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.mode-card {
+  position: relative;
+  background: var(--bg-input);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), transform var(--transition);
+  text-align: center;
+}
+
+.mode-card input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.mode-card:hover {
+  border-color: var(--accent);
+  background: var(--accent-dimmer);
+  transform: translateY(-1px);
+}
+
+.mode-card:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.mode-icon { font-size: 24px; }
+
+.mode-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mode-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ── 入室ボタン ──────────────────────────────────────────── */
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent) 0%, #9d6aff 100%);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 14px 24px;
+  cursor: pointer;
+  transition: transform var(--transition), box-shadow var(--transition), filter var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  letter-spacing: 0.3px;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(124, 106, 255, 0.5);
+  filter: brightness(1.1);
+}
+
+.btn-primary:active { transform: translateY(0); }
+
+/* ════════════════════════════════════════════════════════════
+   チャット画面レイアウト
+════════════════════════════════════════════════════════════ */
+.chat-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: var(--bg-primary);
+}
+
+/* ── ヘッダー ─────────────────────────────────────────────── */
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  height: 64px;
+  min-height: 64px;
+  background: var(--bg-glass-heavy);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  z-index: 50;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-logo { font-size: 22px; }
+
+.header-app-name {
+  font-size: 18px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.3px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-username {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── バッジ ───────────────────────────────────────────────── */
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 99px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.badge-mode {
+  background: var(--accent-dim);
+  color: var(--accent-hover);
+  border: 1px solid var(--accent);
+}
+
+.badge-role {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--warning);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+}
+
+.badge-accent {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.badge-interviewer {
+  background: var(--interviewer-dim);
+  color: var(--interviewer-accent);
+  border: 1px solid rgba(255, 106, 106, 0.4);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 99px;
+}
+
+/* ── スマホタブ ───────────────────────────────────────────── */
+.mobile-tab.sidebar-users {
+  width: 280px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(10px);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s ease;
+  z-index: 20;
+}
+
+.user-list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  margin: 4px 8px;
+  transition: var(--transition);
+}
+
+.user-status-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--success);
+  border-radius: 50%;
+}
+
+
+.tab-btn {
+  flex: 1;
+  padding: 10px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ── メインエリア ─────────────────────────────────────────── */
+.chat-main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 0;
+}
+
+/* ── パネル共通 ───────────────────────────────────────────── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.panel-chat {
+  flex: 1;
+  border-right: 1px solid var(--border);
+}
+
+.panel-sub {
+  width: 380px;
+  min-width: 320px;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg-card);
+}
+
+.panel-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ルーム切替プルダウン */
+.room-select {
+  background: var(--bg-input);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  appearance: none;
+  -webkit-appearance: none;
+  /* 矢印アイコン */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 26px;
+}
+
+.room-select:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.room-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.room-select option {
+  background-color: #1e1e2e;
+  color: var(--text-primary);
+}
+
+/* シークレットルーム選択中はボーダーを緑に */
+.room-select.is-secret {
+  border-color: rgba(16, 185, 129, 0.6);
+  color: #10b981;
+}
+
+/* シークレットルームのメッセージエリア */
+.messages-secret {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 12px,
+    rgba(16, 185, 129, 0.02) 12px,
+    rgba(16, 185, 129, 0.02) 24px
+  );
+  border-top: 1px solid rgba(16, 185, 129, 0.15);
+}
+
+.panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.3px;
+}
+
+.sub-content { display: flex; flex-direction: column; height: 100%; }
+
+/* ── メッセージ一覧 ───────────────────────────────────────── */
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  scroll-behavior: smooth;
+  width: 100%; /* 幅をいっぱいに広げる */
+}
+
+/* ── メッセージ吹き出し ───────────────────────────────────── */
+.msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 80%;
+  animation: msgIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  margin-bottom: 16px;
+}
+
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.msg-mine { 
+  align-self: flex-end !important;
+  align-items: flex-end;
+  margin-left: auto; /* 右寄せをより確実にする */
+}
+
+.msg-theirs { 
+  align-self: flex-start !important;
+  align-items: flex-start;
+  margin-right: auto; /* 左寄せをより確実にする */
+}
+
+.msg-content-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+
+.msg-bubble {
+  padding: 12px 18px;
+  border-radius: var(--radius-lg);
+  font-size: 15px;
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+  box-shadow: var(--shadow-sm);
+}
+
+.msg-mine .msg-bubble {
+  background: var(--my-bubble-bg);
+  color: var(--my-bubble-text);
+  border-bottom-right-radius: 4px;
+}
+
+.msg-theirs .msg-bubble {
+  background: var(--other-bubble-bg);
+  border: 1px solid var(--other-bubble-border);
+  color: var(--text-primary);
+  border-bottom-left-radius: 4px;
+}
+
+.msg-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.msg-mine .msg-meta { justify-content: flex-end; }
+.msg-meta-name { font-weight: 600; color: var(--accent-hover); }
+
+
+/* ── 画像メッセージ ───────────────────────────────────────── */
+.msg-image {
+  max-width: 240px;
+  max-height: 240px;
+  width: 100%;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: block;
+  transition: transform var(--transition), box-shadow var(--transition);
+  object-fit: cover;
+}
+
+.msg-image:hover {
+  transform: scale(1.03);
+  box-shadow: var(--shadow-md);
+}
+
+/* ── システムメッセージ ───────────────────────────────────── */
+.msg-system {
+  align-self: center;
+  background: var(--system-bg);
+  color: var(--system-text);
+  font-size: 12px;
+  padding: 4px 16px;
+  border-radius: 99px;
+  border: 1px solid rgba(102,102,170,0.2);
+  text-align: center;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── 面接官専用メッセージ ────────────────────────────────── */
+.msg-interviewer-chat .msg-bubble {
+  background: var(--interviewer-dim);
+  border: 1px solid rgba(255,106,106,0.3);
+  color: var(--text-primary);
+}
+
+/* ── 接続ステータス ───────────────────────────────────────── */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.status-connecting { background: var(--warning); animation: pulse 1.4s infinite; }
+.status-connected   { background: var(--success); }
+.status-disconnected { background: var(--error); }
+
+@keyframes pulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+/* ── GD共有メモ ───────────────────────────────────────────── */
+.gd-note {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.note-field { display: flex; flex-direction: column; gap: 6px; }
+
+.note-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.3px;
+}
+
+.note-textarea {
+  background: var(--bg-input);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 10px 12px;
+  resize: vertical;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  outline: none;
+  min-height: 48px;
+}
+
+.note-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.note-textarea::placeholder { color: var(--text-muted); }
+.note-textarea:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 編集権限コントロール */
+.note-edit-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.edit-mode-label { font-size: 11px; color: var(--text-muted); }
+
+.btn-sm {
+  padding: 4px 12px;
+  background: var(--accent-dim);
+  color: var(--accent-hover);
+  border: 1px solid var(--accent);
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition);
+  font-family: inherit;
+}
+
+.btn-sm:hover { background: var(--accent); color: #fff; }
+
+/* ── 入力エリア ───────────────────────────────────────────── */
+.chat-footer {
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  padding: 12px 16px;
+}
+
+.input-area { display: flex; flex-direction: column; gap: 8px; }
+
+/* 送信先セレクター */
+.input-target-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.form-label-sm {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.target-btns { display: flex; gap: 6px; }
+
+.target-btn {
+  padding: 4px 14px;
+  background: var(--bg-input);
+  border: 1.5px solid var(--border);
+  border-radius: 99px;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.target-btn.active {
+  background: var(--accent-dim);
+  color: var(--accent-hover);
+  border-color: var(--accent);
+}
+
+.target-btn[data-target="sub"].active {
+  background: var(--interviewer-dim);
+  color: var(--interviewer-accent);
+  border-color: var(--interviewer-accent);
+}
+
+/* 入力行 */
+.input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.btn-icon {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  background: var(--bg-input);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+
+.btn-icon:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dimmer);
+}
+
+.text-input-wrapper {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition), box-shadow var(--transition);
+  overflow: hidden;
+}
+
+.text-input-wrapper:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.textarea-message {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  padding: 10px 14px;
+  resize: none;
+  outline: none;
+  max-height: 120px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+
+.textarea-message::placeholder { color: var(--text-muted); }
+
+/* 画像プレビュー */
+.image-preview-area {
+  padding: 8px 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.btn-remove-image {
+  width: 22px;
+  height: 22px;
+  background: rgba(248, 113, 113, 0.2);
+  border: none;
+  border-radius: 50%;
+  color: var(--error);
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition);
+}
+
+.btn-remove-image:hover { background: rgba(248, 113, 113, 0.4); }
+
+/* 送信ボタン */
+.btn-send {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-md);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--transition);
+}
+
+.btn-send:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: scale(1.05);
+  box-shadow: 0 4px 16px rgba(124,106,255,0.5);
+}
+
+.btn-send:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ════════════════════════════════════════════════════════════
+   モーダル（画像拡大）
+════════════════════════════════════════════════════════════ */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  position: relative;
+  z-index: 201;
+  max-width: min(90vw, 900px);
+  max-height: 90dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: modalIn 0.2s ease;
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.modal-image {
+  max-width: 100%;
+  max-height: 85dvh;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  display: block;
+}
+
+.modal-close {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  width: 34px;
+  height: 34px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition), color var(--transition);
+  z-index: 202;
+  box-shadow: var(--shadow-sm);
+}
+
+.modal-close:hover {
+  background: var(--error);
+  color: #fff;
+  border-color: var(--error);
+}
+
+/* ── トースト通知 ─────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 20px;
+  color: var(--warning);
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: var(--shadow-md);
+  z-index: 300;
+  animation: slideUp 0.3s ease;
+}
+
+/* ════════════════════════════════════════════════════════════
+   レスポンシブ: PC（768px超）
+════════════════════════════════════════════════════════════ */
+@media (min-width: 769px) {
+  .mobile-tabs { display: none !important; }
+
+  .panel-sub { display: flex !important; }
+
+  /* チャット画面をフル幅で表示 */
+  .chat-screen { max-width: 100%; width: 100%; height: 100vh; margin: 0; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   レスポンシブ: スマホ（768px以下）
+════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  html, body { overflow: hidden; }
+
+  .login-card { padding: 28px 20px; }
+
+  .mode-cards { grid-template-columns: repeat(3, 1fr); }
+  .mode-card { padding: 10px 6px; }
+  .mode-icon { font-size: 20px; }
+  .mode-name { font-size: 11px; }
+  .mode-desc { font-size: 9px; }
+
+  .panel-sub {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100% !important;
+    background: var(--bg-secondary);
+    z-index: 5;
+  }
+
+  /* タブ切替でパネルを表示/非表示 */
+  .panel-chat { flex: 1; }
+  
+  .msg { max-width: 85%; }
+
+  .chat-footer { padding: 8px 12px; }
+
+  .btn-icon, .btn-send { width: 40px; height: 40px; min-width: 40px; }
+
+  .textarea-message { font-size: 16px; } /* iOS zoom防止 */
+
+  .header-username { max-width: 80px; font-size: 12px; }
+  .badge { font-size: 10px; padding: 2px 8px; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   その他
+════════════════════════════════════════════════════════════ */
+
+/* ローディングスピナー */
+.uploading .btn-send {
+  animation: spin 1s linear infinite;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* エラーフラッシュ */
+.input-error {
+  border-color: var(--error) !important;
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.2) !important;
+}
+
+/* ════════════════════════════════════════════════════════════
+   モード切替ボタン（ヘッダー）
+════════════════════════════════════════════════════════════ */
+.btn-switch-mode {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: var(--accent-dimmer);
+  border: 1.5px solid var(--border);
+  border-radius: 99px;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+.btn-switch-mode:hover {
+  border-color: var(--accent);
+  color: var(--accent-hover);
+  background: var(--accent-dim);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(124,106,255,0.25);
+}
+
+.btn-danger {
+  background: rgba(248, 113, 113, 0.1) !important;
+  color: var(--error) !important;
+  border: 1px solid rgba(248, 113, 113, 0.4) !important;
+}
+
+.btn-danger:hover {
+  background: rgba(248, 113, 113, 0.2) !important;
+  color: var(--error) !important;
+  border-color: rgba(248, 113, 113, 0.6) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.1);
+}
+
+.btn-danger:active {
+  transform: translateY(0);
+}
+
+/* ════════════════════════════════════════════════════════════
+   モード切替パネル（オーバーレイ）
+════════════════════════════════════════════════════════════ */
+.mode-switch-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.mode-switch-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+}
+
+.mode-switch-panel {
+  position: relative;
+  z-index: 301;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 28px 28px 24px;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: var(--shadow-lg);
+  animation: panelIn 0.25s cubic-bezier(0.34, 1.36, 0.64, 1);
+}
+
+@keyframes panelIn {
+  from { opacity: 0; transform: scale(0.93) translateY(12px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.mode-switch-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mode-switch-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* スマホ対応 */
+@media (max-width: 768px) {
+  .btn-switch-mode span { display: none; }  /* ラベルを隠してアイコンのみ */
+  .btn-switch-mode { padding: 5px 8px; }
+  .mode-switch-panel { padding: 22px 18px 18px; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   送信取り消しボタン
+════════════════════════════════════════════════════════════ */
+.msg-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.msg:hover .msg-actions { opacity: 1; }
+
+.btn-delete-msg {
+  width: 22px;
+  height: 22px;
+  background: rgba(248, 113, 113, 0.15);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: 50%;
+  color: var(--error);
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+  padding: 0;
+  line-height: 1;
+}
+
+.btn-delete-msg:hover {
+  background: rgba(248, 113, 113, 0.45);
+  transform: scale(1.15);
+}
+
+/* ── 取り消し済みメッセージ ──────────────────────────────── */
+.msg-bubble-deleted {
+  background: transparent !important;
+  border: 1.5px dashed var(--border-light) !important;
+  color: var(--text-muted) !important;
+  font-style: italic;
+  font-size: 13px !important;
+  opacity: 0.7;
+}
+
+/* ── 履歴区切りライン ────────────────────────────────────── */
+.history-sep {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  padding: 6px 0;
+  white-space: nowrap;
+}
+
+.history-sep::before,
+.history-sep::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ════════════════════════════════════════════════════════════
+   オンラインユーザーサイドバー
+════════════════════════════════════════════════════════════ */
+.sidebar-users {
+  width: 250px;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-users-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sidebar-users-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.user-count-badge {
+  background: var(--primary);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.user-list {
+  list-style: none;
+  padding: 8px 0;
+  margin: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.user-list-item {
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all var(--transition);
+  border-left: 3px solid transparent;
+}
+
+.user-list-item:hover {
+  background: var(--bg-surface-hover);
+  border-left-color: var(--accent-dim);
+}
+
+.user-list-item.is-me {
+  cursor: default;
+  background: rgba(124, 106, 255, 0.05);
+  border-left-color: var(--accent);
+}
+
+.user-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981; /* オンライン色 */
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+
+
+.user-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.user-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-role-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-dimmer);
+  padding: 1px 6px;
+  border-radius: 4px;
+  width: fit-content;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid var(--accent-dim);
+}
+
+.btn-dm-open {
+  margin-left: 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: none; /* hover時に表示 */
+}
+.user-list-item:hover .btn-dm-open {
+  display: block;
+}
+.btn-dm-open:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--primary);
+}
+
+.user-list-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ════════════════════════════════════════════════════════════
+   DMパネル (フローティング)
+════════════════════════════════════════════════════════════ */
+.dm-overlay {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 320px;
+  height: 400px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+  overflow: hidden;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.dm-overlay.hidden {
+  display: none; /* JSで切り替え */
+}
+
+.dm-panel-header {
+  padding: 16px 20px;
+  background: var(--bg-glass-heavy);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dm-messages {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  background: var(--bg-glass);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dm-footer {
+  padding: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: var(--bg-glass-heavy);
+}
+
+.dm-textarea {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 10px 16px;
+  font-size: 14px;
+  color: var(--text-primary);
+  resize: none;
+  font-family: inherit;
+  outline: none;
+  transition: var(--transition);
+}
+
+.dm-textarea:focus {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.btn-dm-send {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.btn-dm-send svg {
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 768px) {
+  .sidebar-users {
+    display: none; /* スマホではサイドバーを隠す（必要に応じてタブ追加） */
+  }
+  .dm-overlay {
+    bottom: 0;
+    right: 0;
+    width: 100vw;
+    height: 60vh;
+    border-radius: 16px 16px 0 0;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   面接練習モード: 部屋コードバッジ
+════════════════════════════════════════════════════════════ */
+.badge-room {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.note-sep {
+  border: none;
+  border-top: 1px dashed var(--border);
+  margin: 24px 0 16px;
+}
+
+.note-hint {
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+
+.note-private {
+  background: rgba(124, 106, 255, 0.03) !important;
+  border-color: rgba(124, 106, 255, 0.2) !important;
+}
+
+.note-private:focus {
+  background: rgba(124, 106, 255, 0.08) !important;
+  border-color: var(--accent) !important;
+}

@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>GoChat — リアルタイムチャット</title>
+  <meta name="description" content="Go製リアルタイムチャット。通常チャット・面接練習・グループディスカッション練習に対応。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=2">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     入室画面
+═══════════════════════════════════════════ -->
+<div id="login-screen" class="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <span class="logo-icon">💬</span>
+      <h1 class="login-title">GoChat</h1>
+      <p class="login-subtitle">リアルタイムチャット</p>
+    </div>
+
+    <div class="login-form">
+      <!-- 表示名 -->
+      <div class="form-group">
+        <label for="input-username" class="form-label">表示名</label>
+        <input
+          id="input-username"
+          type="text"
+          class="form-input"
+          placeholder="名前を入力してください"
+          maxlength="20"
+          autocomplete="off"
+        >
+        <span id="username-error" class="form-error hidden">表示名を入力してください</span>
+      </div>
+
+      <!-- モード選択 -->
+      <div class="form-group">
+        <label class="form-label">利用モード</label>
+        <div class="mode-cards">
+          <label class="mode-card" id="mode-card-chat">
+            <input type="radio" name="mode" value="chat" checked>
+            <span class="mode-name">通常チャット</span>
+            <span class="mode-desc">気軽におしゃべり</span>
+          </label>
+          <label class="mode-card" id="mode-card-interview">
+            <input type="radio" name="mode" value="interview">
+            <span class="mode-name">面接練習</span>
+            <span class="mode-desc">面接を模擬練習</span>
+          </label>
+          <label class="mode-card" id="mode-card-gd">
+            <input type="radio" name="mode" value="gd">
+            <span class="mode-name">GD練習</span>
+            <span class="mode-desc">グループディスカッション</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 役割選択（モード依存） -->
+      <div id="role-group" class="form-group hidden">
+        <label for="select-role" class="form-label">役割</label>
+        <select id="select-role" class="form-select">
+          <!-- JSで動的に生成 -->
+        </select>
+      </div>
+
+      <!-- 部屋コード (個人間やり取り用) -->
+      <div id="passcode-group" class="form-group">
+        <label for="input-passcode" class="form-label">部屋コード <span class="form-label-hint">（任意）</span></label>
+        <input
+          id="input-passcode"
+          type="text"
+          class="form-input"
+          placeholder="同じコードの人同士で繋がります"
+          maxlength="20"
+          autocomplete="off"
+        >
+        <span class="form-hint">空欄の場合は共通ルームになります。面接・GD練習を別室で分ける場合に入力してください。</span>
+      </div>
+
+
+      <!-- 入室ボタン -->
+      <button id="btn-join" class="btn-primary btn-join">
+        <span>入室する</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M13 5l7 7-7 7M5 12h15"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     チャット画面
+═══════════════════════════════════════════ -->
+<div id="chat-screen" class="chat-screen hidden">
+
+  <!-- ヘッダー -->
+  <header class="chat-header">
+    <div class="header-left">
+      <span class="header-logo">💬</span>
+      <span class="header-app-name">GoChat</span>
+    </div>
+    <div class="header-right">
+      <button id="btn-switch-mode" class="btn-switch-mode" title="モードを切り替える" aria-label="モード切替">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+        </svg>
+        <span>モード切替</span>
+      </button>
+      <div class="header-badges">
+        <span id="header-mode-badge" class="badge badge-mode"></span>
+        <span id="header-role-badge" class="badge badge-role hidden"></span>
+        <span id="header-passcode-badge" class="badge badge-accent hidden"></span>
+      </div>
+      <span id="header-username" class="header-username"></span>
+    </div>
+  </header>
+
+  <!-- スマホ用タブ（面接/GDモードで表示） -->
+  <div id="mobile-tabs" class="mobile-tabs hidden">
+    <button id="tab-chat" class="tab-btn active" data-tab="chat">チャット</button>
+    <button id="tab-sub" class="tab-btn" data-tab="sub">サブパネル</button>
+  </div>
+
+  <!-- メインエリア -->
+  <main class="chat-main">
+
+    <!-- オンラインユーザーサイドバー -->
+    <aside id="sidebar-users" class="sidebar-users">
+      <div class="sidebar-users-header">
+        <span class="sidebar-users-title">オンライン</span>
+        <span id="user-count-badge" class="user-count-badge">0</span>
+      </div>
+      <ul id="user-list" class="user-list" role="list">
+        <li class="user-list-empty">接続待機中...</li>
+      </ul>
+    </aside>
+
+    <!-- 共通チャットパネル -->
+    <section id="panel-main" class="panel panel-chat">
+      <div class="panel-header">
+        <h2 class="panel-title" id="chat-panel-title">💬 チャット</h2>
+        <div class="panel-header-right">
+          <!-- ルーム切替プルダウン -->
+          <select id="room-selector" class="room-select" title="ルーム切替">
+            <option value="main">🌐 メインルーム</option>
+            <option value="secret">🔒 シークレット</option>
+          </select>
+          <span id="connection-status" class="status-dot status-connecting" title="接続中..."></span>
+        </div>
+      </div>
+      <!-- メインルームメッセージ -->
+      <div id="messages" class="messages" role="log" aria-live="polite"></div>
+      <!-- シークレットルームメッセージ（切替で表示） -->
+      <div id="secret-messages" class="messages messages-secret hidden" role="log" aria-live="polite"></div>
+    </section>
+
+
+    <!-- サブパネル（面接官専用 or GD共有メモ） -->
+    <section id="panel-sub" class="panel panel-sub hidden">
+
+      <!-- 面接官専用チャット -->
+      <div id="interviewer-panel" class="sub-content hidden">
+        <div class="panel-header">
+          <h2 class="panel-title">🔒 面接官専用チャット</h2>
+          <span class="panel-badge badge-interviewer">面接官のみ</span>
+        </div>
+        <div id="interviewer-messages" class="messages" role="log"></div>
+      </div>
+
+      <!-- GD共有メモ -->
+      <div id="gd-panel" class="sub-content hidden">
+        <div class="panel-header">
+          <h2 class="panel-title">共有メモ</h2>
+          <div id="note-edit-control" class="note-edit-control hidden">
+            <span class="edit-mode-label">編集権限:</span>
+            <button id="btn-toggle-edit-mode" class="btn-sm" title="編集権限を切り替え">書記のみ</button>
+            <button id="btn-clear-note" class="btn-sm btn-danger" title="すべての共有メモを完全に消去します">共有メモをリセット</button>
+          </div>
+        </div>
+        <div class="gd-note">
+          <div class="note-field">
+            <label class="note-label">テーマ <span class="note-readonly-badge hidden">（読み取り専用）</span></label>
+            <textarea id="note-theme" class="note-textarea" placeholder="ディスカッションのテーマ" rows="2"></textarea>
+          </div>
+          <div class="note-field">
+            <label class="note-label">前提 <span class="note-readonly-badge hidden">（読み取り専用）</span></label>
+            <textarea id="note-premise" class="note-textarea" placeholder="議論の前提・条件" rows="2"></textarea>
+          </div>
+          <div class="note-field">
+            <label class="note-label">発散 <span class="note-readonly-badge hidden">（読み取り専用）</span></label>
+            <textarea id="note-issues" class="note-textarea" placeholder="アイデアを出し合う" rows="3"></textarea>
+          </div>
+          <div class="note-field">
+            <label class="note-label">収束 <span class="note-readonly-badge hidden">（読み取り専用）</span></label>
+            <textarea id="note-opinions" class="note-textarea" placeholder="アイデアをまとめる" rows="4"></textarea>
+          </div>
+          <div class="note-field">
+            <label class="note-label">結論 <span class="note-readonly-badge hidden">（読み取り専用）</span></label>
+            <textarea id="note-conclusion" class="note-textarea" placeholder="グループとしての結論" rows="2"></textarea>
+          </div>
+          <div class="note-field">
+            <label class="note-label">発表用まとめ <span class="note-readonly-badge hidden">（読み取り専用）</span></label>
+            <textarea id="note-summary" class="note-textarea" placeholder="発表用の要約" rows="3"></textarea>
+          </div>
+
+          <hr class="note-sep">
+
+          <div class="note-field">
+            <label class="note-label">自分用メモ <span class="note-hint">（他の人には見えません）</span></label>
+            <textarea id="note-private" class="note-textarea note-private" placeholder="自分だけのメモを自由に記入..." rows="5"></textarea>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- 入力エリア -->
+  <footer class="chat-footer">
+    <div class="input-area">
+
+      <!-- サブパネル切替（面接/GDモード用、面接官チャット送信先） -->
+      <div id="input-target-selector" class="input-target-selector hidden">
+        <label class="form-label-sm">送信先:</label>
+        <div class="target-btns">
+          <button id="btn-target-main" class="target-btn active" data-target="main">全体</button>
+          <button id="btn-target-sub" class="target-btn" data-target="sub">面接官専用</button>
+        </div>
+      </div>
+
+      <div class="input-row">
+        <button id="btn-image" class="btn-icon" title="画像を送信" aria-label="画像を選択">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21 15 16 10 5 21"/>
+          </svg>
+        </button>
+        <input id="file-input" type="file" accept=".jpg,.jpeg,.png,.webp" class="hidden" aria-hidden="true">
+
+        <div class="text-input-wrapper">
+          <div id="image-preview-area" class="image-preview-area hidden">
+            <img id="image-preview-thumb" class="preview-thumb" src="" alt="プレビュー">
+            <button id="btn-remove-image" class="btn-remove-image" title="画像を削除" aria-label="画像を削除">✕</button>
+          </div>
+          <textarea
+            id="input-message"
+            class="textarea-message"
+            placeholder="メッセージを入力... (Enter で送信, Shift+Enter で改行)"
+            rows="1"
+            maxlength="500"
+          ></textarea>
+        </div>
+
+        <button id="btn-send" class="btn-send" disabled title="送信" aria-label="送信">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </footer>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     DMパネル（フローティング）
+═══════════════════════════════════════════ -->
+<div id="dm-overlay" class="dm-overlay hidden" role="dialog" aria-modal="true" aria-label="プライベートメッセージ">
+  <div class="dm-panel-header">
+    <div class="dm-panel-title-wrap">
+      <span>🔒</span>
+      <span id="dm-panel-username" class="dm-panel-username"></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="badge-dm-private">DM</span>
+      <button id="btn-close-dm" class="modal-close" aria-label="閉じる">✕</button>
+    </div>
+  </div>
+  <div id="dm-messages" class="messages dm-messages" role="log" aria-live="polite"></div>
+  <div class="dm-footer">
+    <textarea
+      id="dm-input"
+      class="dm-textarea"
+      placeholder="プライベートメッセージ (Enter送信)"
+      rows="1"
+      maxlength="500"
+    ></textarea>
+    <button id="btn-dm-send" class="btn-send btn-dm-send" disabled aria-label="送信">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     モード切替パネル
+═══════════════════════════════════════════ -->
+<div id="mode-switch-overlay" class="mode-switch-overlay hidden" role="dialog" aria-modal="true" aria-label="モード切替">
+  <div class="mode-switch-backdrop" id="mode-switch-backdrop"></div>
+  <div class="mode-switch-panel">
+    <div class="mode-switch-header">
+      <h2 class="mode-switch-title">モード切替</h2>
+      <button id="btn-close-mode-switch" class="modal-close" aria-label="閉じる">✕</button>
+    </div>
+
+    <div class="mode-cards">
+      <label class="mode-card" id="sw-mode-card-chat">
+        <input type="radio" name="sw-mode" value="chat" id="sw-radio-chat">
+        <span class="mode-name">通常チャット</span>
+        <span class="mode-desc">気軽におしゃべり</span>
+      </label>
+      <label class="mode-card" id="sw-mode-card-interview">
+        <input type="radio" name="sw-mode" value="interview" id="sw-radio-interview">
+        <span class="mode-name">面接練習</span>
+        <span class="mode-desc">面接を模擬練習</span>
+      </label>
+      <label class="mode-card" id="sw-mode-card-gd">
+        <input type="radio" name="sw-mode" value="gd" id="sw-radio-gd">
+        <span class="mode-name">GD練習</span>
+        <span class="mode-desc">グループディスカッション</span>
+      </label>
+    </div>
+
+    <!-- 部屋コード (個人間やり取り用) -->
+    <div id="sw-passcode-group" class="form-group">
+      <label for="sw-input-passcode" class="form-label">部屋コード <span class="form-label-hint">（任意）</span></label>
+      <input
+        id="sw-input-passcode"
+        type="text"
+        class="form-input"
+        placeholder="同じコードの人同士で繋がります"
+        maxlength="20"
+        autocomplete="off"
+      >
+      <span class="form-hint" style="margin-top: 4px; display: block;">面接・GD練習を別室で分ける場合に入力してください。</span>
+    </div>
+
+    <div id="sw-role-group" class="form-group hidden">
+      <label for="sw-select-role" class="form-label">役割</label>
+      <select id="sw-select-role" class="form-select"></select>
+    </div>
+
+    <button id="btn-apply-mode" class="btn-primary" style="margin-top:4px">
+      <span>適用する</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     画像拡大モーダル
+═══════════════════════════════════════════ -->
+<div id="image-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="画像拡大表示">
+  <div class="modal-overlay" id="modal-overlay"></div>
+  <div class="modal-content">
+    <button id="modal-close" class="modal-close" aria-label="閉じる">✕</button>
+    <img id="modal-image" class="modal-image" src="" alt="拡大画像">
+  </div>
+</div>
+
+<!-- 接続失敗通知 -->
+<div id="reconnect-toast" class="toast hidden">
+  <span>接続が切れました。ページを再読み込みしてください。</span>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
