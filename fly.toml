@@ -1,10 +1,10 @@
-# fly.toml app configuration file generated for go-chat-kz-noa on 2026-04-05T04:49:15+09:00
+# fly.toml app configuration file generated for go-chat-oarnlg on 2026-04-05T12:31:16Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'go-chat-kz-noa'
-primary_region = 'nrt'
+app = 'go-chat-oarnlg'
+primary_region = 'iad'
 
 [build]
 
@@ -21,11 +21,3 @@ primary_region = 'nrt'
   cpu_kind = 'shared'
   cpus = 1
   memory_mb = 1024
-
-[[mounts]]
-  source = 'gochat_data'
-  destination = '/app/data'
-
-[env]
-  DATA_DIR = '/app/data'
-  PORT = '8080'
