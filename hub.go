@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -33,6 +34,7 @@ type Hub struct {
 	userJoined   chan *Client       // username確定後に送信
 	usernames    map[string]*Client // username → Client
 	lastClearTime map[string]time.Time
+	mu           sync.RWMutex // usernames保護用
 }
 
 func newHub() *Hub {
@@ -60,9 +62,11 @@ func (h *Hub) run() {
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				// usernamesからも削除（同一clientの場合のみ）
+				h.mu.Lock()
 				if stored, ok := h.usernames[client.username]; ok && stored == client {
 					delete(h.usernames, client.username)
 				}
+				h.mu.Unlock()
 				close(client.send)
 				log.Printf("切断: %s", client.username)
 
@@ -159,7 +163,9 @@ func (h *Hub) run() {
 
 		case client := <-h.userJoined:
 			// username→clientマップ登録してユーザーリストを更新
+			h.mu.Lock()
 			h.usernames[client.username] = client
+			h.mu.Unlock()
 			h.broadcastUserList()
 			log.Printf("ユーザー登録: %s", client.username)
 		}
@@ -183,6 +189,7 @@ func (h *Hub) broadcastUserList() {
 	// クライアントごとに、そのクライアントと同じ合言葉を持つユーザーのリストを作って送る
 	for client := range h.clients {
 		users := make([]User, 0)
+		h.mu.RLock()
 		for _, other := range h.usernames {
 			if other.passcode == client.passcode {
 				users = append(users, User{
@@ -192,6 +199,7 @@ func (h *Hub) broadcastUserList() {
 				})
 			}
 		}
+		h.mu.RUnlock()
 		msg := Message{Type: "user_list", Users: users}
 		data, err := json.Marshal(msg)
 		if err != nil {
@@ -208,7 +216,10 @@ func (h *Hub) broadcastUserList() {
 
 // sendToUser は指定ユーザーのクライアントへ直接送信する
 func (h *Hub) sendToUser(username string, data []byte) {
-	if c, ok := h.usernames[username]; ok {
+	h.mu.RLock()
+	c, ok := h.usernames[username]
+	h.mu.RUnlock()
+	if ok {
 		select {
 		case c.send <- data:
 		default:
@@ -219,6 +230,14 @@ func (h *Hub) sendToUser(username string, data []byte) {
 	}
 }
 
+// IsUsernameTaken は指定された名前が既に使用されているか確認する
+func (h *Hub) IsUsernameTaken(name string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	_, ok := h.usernames[name]
+	return ok
+}
+
 // nowJST は現在の日本時間をRFC3339形式で返す
 func nowJST() string {
 	loc, err := time.LoadLocation("Asia/Tokyo")
@@ -226,4 +245,18 @@ func nowJST() string {
 		return time.Now().Format(time.RFC3339)
 	}
 	return time.Now().In(loc).Format(time.RFC3339)
+}
+
+// buildEffectiveRoom はモードとユーザー入力のpasscodeを組み合わせた
+// 内部的なルームキーを返す。
+// これにより、部屋コードなしでも面接/GD/通常チャットが独立した部屋になる。
+func buildEffectiveRoom(mode, passcode string) string {
+	switch mode {
+	case "interview":
+		return "interview|" + passcode
+	case "gd":
+		return "gd|" + passcode
+	default:
+		return passcode
+	}
 }

@@ -35,6 +35,9 @@ const state = {
   activeDmUser: null,     // 現在DMを開いている相手のユーザー名
   dmHistory: {},          // 相手名 → DMメッセージ配列
   passcode: '',           // 部屋コード
+  dmSelectedFile: null,   // DMパネルの選択中画像
+  unreadDms:      {},     // 相手名 → 未読数
+  autoReconnectCount: 0,
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -66,12 +69,14 @@ const el = {
   // タブ（スマホ）
   mobileTabs:   $('mobile-tabs'),
   tabChat:      $('tab-chat'),
+  tabUsers:     $('tab-users'),
   tabSub:       $('tab-sub'),
 
   // パネル
   chatFooter:   document.querySelector('.chat-footer'),
   panelMain:    $('panel-main'),
   panelSub:     $('panel-sub'),
+  sidebarUsers: $('sidebar-users'),
   messages:     $('messages'),
   interviewerPanel: $('interviewer-panel'),
   interviewerMessages: $('interviewer-messages'),
@@ -104,6 +109,7 @@ const el = {
   // ルーム切替
   roomSelector:  $('room-selector'),
   secretMessages: $('secret-messages'),
+  gdMessages:    $('gd-messages'),
   chatPanelTitle: $('chat-panel-title'),
 
   // モーダル
@@ -139,6 +145,25 @@ const el = {
   dmMessages:        $('dm-messages'),
   dmInput:           $('dm-input'),
   btnDmSend:         $('btn-dm-send'),
+  btnDmImage:        $('btn-dm-image'),
+  dmFileInput:       $('dm-file-input'),
+  dmImagePrevArea:   $('dm-image-preview-area'),
+  dmImagePrevThumb:  $('dm-image-preview-thumb'),
+  btnDmRemoveImage:  $('btn-dm-remove-image'),
+
+  // 通知・タイマー [NEW]
+  logoutBtn:         $('btn-logout'),
+  toastContainer:    $('toast-container'),
+  tkTimerPanel:      $('tk-timer-panel'),
+  tkTimerSetup:      $('tk-timer-setup'),
+  tkTimerRunning:    $('tk-timer-running'),
+  selectTkMin:       $('select-tk-min'),
+  selectTkSec:       $('select-tk-sec'),
+  tkTimerDisplay:    $('tk-timer-display'),
+  btnTkTimerStartSetup: $('btn-tk-timer-start-setup'),
+  btnTkTimerCancelSetup: $('btn-tk-timer-cancel-setup'),
+  btnTkTimerCancel:  $('btn-tk-timer-cancel'),
+  btnTkTimerPause:   $('btn-tk-timer-pause'),
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -211,6 +236,7 @@ el.modeCards.forEach(radio => {
 /** 役割セレクト変更 */
 el.selectRole.addEventListener('change', () => {
   state.role = el.selectRole.value;
+  saveLoginState();
 });
 
 /** 入室ボタン */
@@ -243,7 +269,7 @@ function joinChat() {
   el.chatScreen.classList.remove('hidden');
 
   // ヘッダー更新
-  el.headerUsername.textContent = `👤 ${state.username}`;
+  el.headerUsername.textContent = state.username;
   updateHeaderBadges();
 
   // UIのモード設定
@@ -251,6 +277,7 @@ function joinChat() {
 
   // WebSocket接続
   connectWebSocket();
+  saveLoginState(); // ログイン情報を保存
 }
 
 /** ヘッダーのバッジを更新 */
@@ -258,7 +285,9 @@ function updateHeaderBadges() {
   if (!el.headerModeBadge) return;
   el.headerModeBadge.textContent = MODE_LABELS[state.mode] || state.mode;
   
-  if (state.role) {
+  // 通常チャット（chat）モードではロール等を表示しない
+  const showRole = state.mode !== 'chat';
+  if (showRole && state.role) {
     el.headerRoleBadge.textContent = ROLE_LABELS[state.role] || state.role;
     el.headerRoleBadge.classList.remove('hidden');
   } else {
@@ -280,9 +309,13 @@ function updateHeaderBadges() {
 function setupModeUI() {
   const { mode, role } = state;
 
+  // タイマーや通知等のフローティングUIリセット
+  el.tkTimerPanel.classList.add('hidden');
+
   // まずすべてのサブUI要素をリセット
   el.panelSub.classList.add('hidden');
   el.mobileTabs.classList.add('hidden');
+  el.tabSub.classList.add('hidden');
   el.inputTargetSelector.classList.add('hidden');
   el.interviewerPanel.classList.add('hidden');
   el.gdPanel.classList.add('hidden');
@@ -290,8 +323,18 @@ function setupModeUI() {
   el.panelMain.classList.remove('hidden');
   el.chatFooter.classList.remove('hidden');
 
+  // スマホの場合は常にタブを表示（チャット・参加者）
+  if (window.innerWidth <= 768) {
+    el.mobileTabs.classList.remove('hidden');
+    switchTab('chat');
+  }
+
   // 送信先を全体に戻す
   setSendTarget('main');
+
+  // GDメッセージエリアをリセット（通常/面接モードは通常メッセージエリアを使用）
+  el.messages.classList.remove('hidden');
+  el.gdMessages.classList.add('hidden');
 
   // ── 通常チャット ──────────────────────────
   if (mode === 'chat') return;
@@ -301,6 +344,7 @@ function setupModeUI() {
     if (role === 'interviewer') {
       el.interviewerPanel.classList.remove('hidden');
       showSubPanel();
+      el.tabSub.classList.remove('hidden');
       el.inputTargetSelector.classList.remove('hidden');
       el.tabSub.textContent = '面接官チャット';
     }
@@ -309,14 +353,33 @@ function setupModeUI() {
 
   // ── GD練習 ────────────────────────────────
   if (mode === 'gd') {
+    // GD専用チャットエリアに切替（面接モードのエリアと分離）
+    el.messages.classList.add('hidden');
+    el.gdMessages.classList.remove('hidden');
+
     el.gdPanel.classList.remove('hidden');
     showSubPanel();
+    el.tabSub.classList.remove('hidden');
     el.tabSub.textContent = '共有メモ';
     if (role !== 'observer') {
       el.noteEditControl.classList.remove('hidden');
     }
     updateNoteEditability();
     setupNoteListeners();
+
+    // タイムキーパーならタイマーを表示
+    if (state.role === 'timekeeper') {
+      console.log('Timer visibility: forcing display for timekeeper');
+      if (el.tkTimerPanel) {
+        el.tkTimerPanel.classList.remove('hidden');
+        el.tkTimerPanel.style.display = 'flex';
+      }
+    } else {
+      if (el.tkTimerPanel) {
+        el.tkTimerPanel.classList.add('hidden');
+        el.tkTimerPanel.style.display = 'none';
+      }
+    }
   }
 }
 
@@ -335,21 +398,46 @@ function showSubPanel() {
    スマホタブ切替
 ═══════════════════════════════════════════════════════════ */
 el.tabChat.addEventListener('click', () => switchTab('chat'));
+el.tabUsers.addEventListener('click', () => switchTab('users'));
 el.tabSub.addEventListener('click',  () => switchTab('sub'));
 
 function switchTab(tab) {
   const isMobile = window.innerWidth <= 768;
   if (!isMobile) return;
 
+  state.activeTab = tab; // 追加: アクティブなタブを保存
+  saveLoginState();      // 追加
+
   el.tabChat.classList.toggle('active', tab === 'chat');
+  el.tabUsers.classList.toggle('active', tab === 'users');
   el.tabSub.classList.toggle('active',  tab === 'sub');
 
+  // 表示の切り替え
   if (tab === 'chat') {
     el.panelMain.style.display = '';
+    el.sidebarUsers.classList.remove('active');
     el.panelSub.style.display  = 'none';
+    el.chatFooter.classList.remove('hidden');
+    setSendTarget('main');
+  } else if (tab === 'users') {
+    el.panelMain.style.display = 'none';
+    el.sidebarUsers.classList.add('active');
+    el.panelSub.style.display  = 'none';
+    el.chatFooter.classList.add('hidden');
   } else {
     el.panelMain.style.display = 'none';
+    el.sidebarUsers.classList.remove('active');
     el.panelSub.style.display  = '';
+    
+    // サブパネル時のフッター表示制御
+    if (state.mode === 'gd') {
+      el.chatFooter.classList.add('hidden');
+    } else {
+      el.chatFooter.classList.remove('hidden');
+      if (state.mode === 'interview') {
+        setSendTarget('sub');
+      }
+    }
   }
 }
 
@@ -365,6 +453,7 @@ function connectWebSocket() {
   state.ws.addEventListener('open', () => {
     state.isConnected = true;
     setConnectionStatus('connected');
+    el.reconnectToast.classList.add('hidden'); // 接続成功時にメッセージを隠す
 
     // joinメッセージを送信
     sendWsMessage({
@@ -392,6 +481,13 @@ function connectWebSocket() {
     state.isConnected = false;
     setConnectionStatus('disconnected');
     el.reconnectToast.classList.remove('hidden');
+
+    // 5秒後に再接続試行
+    setTimeout(() => {
+      if (!state.isConnected && state.username) {
+        tryReconnect();
+      }
+    }, 5000);
   });
 
   state.ws.addEventListener('error', err => {
@@ -424,17 +520,20 @@ function setConnectionStatus(status) {
    メッセージ受信ハンドラ
 ═══════════════════════════════════════════════════════════ */
 function handleMessage(msg) {
+  // GDモードのチャットはGD専用エリアへ、それ以外は通常エリアへ
+  const mainContainer = state.mode === 'gd' ? el.gdMessages : el.messages;
+
   switch (msg.type) {
     case 'text':
-      appendTextMessage(msg, el.messages);
+      appendTextMessage(msg, mainContainer);
       break;
 
     case 'image':
-      appendImageMessage(msg, el.messages);
+      appendImageMessage(msg, mainContainer);
       break;
 
     case 'system':
-      appendSystemMessage(msg.content, el.messages);
+      appendSystemMessage(msg.content, mainContainer);
       break;
 
     case 'secret_chat':
@@ -463,7 +562,7 @@ function handleMessage(msg) {
       break;
 
     case 'deleted':
-      appendDeletedPlaceholder(msg, el.messages);
+      appendDeletedPlaceholder(msg, mainContainer);
       break;
 
     case 'delete':
@@ -476,6 +575,15 @@ function handleMessage(msg) {
 
     case 'dm':
       handleDmMessage(msg);
+      break;
+
+    case 'error':
+      // 入室画面へ戻す。alert前にクリアすることでCloseイベント時の再接続を防ぐ
+      state.username = '';
+      alert(msg.content);
+      el.chatScreen.classList.add('hidden');
+      el.loginScreen.classList.remove('hidden');
+      el.reconnectToast.classList.add('hidden');
       break;
   }
 }
@@ -518,12 +626,12 @@ function appendTextMessage(msg, container, isInterviewerChat = false) {
     </div>
   `;
 
-  // 自分のメッセージに取り消しボタンを追加
+  // 自分のメッセージに取り消しボタンを追加（左側に配置）
   if (mine && msg.id) {
     const actions = document.createElement('div');
     actions.className = 'msg-actions';
     actions.innerHTML = `<button class="btn-delete-msg" title="取り消す" onclick="requestDelete('${escHtml(msg.id)}')">&#x2715;</button>`;
-    div.appendChild(actions);
+    div.insertBefore(actions, div.firstChild);
   }
 
   container.appendChild(div);
@@ -561,11 +669,12 @@ function appendImageMessage(msg, container) {
 
   div.appendChild(contentWrap);
 
-  if (msg.id) {
+  // 自分のメッセージに取り消しボタンを追加（画像も左側）
+  if (mine && msg.id) {
     const actions = document.createElement('div');
     actions.className = 'msg-actions';
     actions.innerHTML = `<button class="btn-delete-msg" title="取り消す" onclick="requestDelete('${escHtml(msg.id)}')">&#x2715;</button>`;
-    div.appendChild(actions);
+    div.insertBefore(actions, div.firstChild);
   }
 
   container.appendChild(div);
@@ -583,16 +692,19 @@ function appendSystemMessage(content, container) {
 
 /** 履歴区切り表示と画面クリア */
 function appendHistorySep(type) {
+  const mainContainer = state.mode === 'gd' ? el.gdMessages : el.messages;
+
   if (type === 'start') {
     el.messages.innerHTML = '';
+    el.gdMessages.innerHTML = '';
     el.interviewerMessages.innerHTML = '';
     return;
   }
 
   const div = document.createElement('div');
   div.className = 'history-sep';
-  div.textContent = type === 'start' ? '── 過去のメッセージ ──' : '── 新しいメッセージ ──';
-  el.messages.appendChild(div);
+  div.textContent = '── 新しいメッセージ ──';
+  mainContainer.appendChild(div);
 }
 
 /** 履歴再生時の「取り消し済み」プレースホルダー */
@@ -611,7 +723,7 @@ function appendDeletedPlaceholder(msg, container) {
 /** リアルタイム削除イベント */
 function handleDeleteEvent(id) {
   if (!id) return;
-  [el.messages, el.interviewerMessages, el.dmMessages].forEach(container => {
+  [el.messages, el.gdMessages, el.interviewerMessages, el.dmMessages].forEach(container => {
     const msgEl = container.querySelector(`[data-msg-id="${CSS.escape(id)}"]`);
     if (!msgEl) return;
     msgEl.removeAttribute('data-msg-id');
@@ -802,8 +914,8 @@ function setSendTarget(target) {
   el.btnTargetSub.classList.toggle('active',  target === 'sub');
 
   const placeholder = target === 'sub'
-    ? '面接官専用チャットへ送信...'
-    : 'メッセージを入力... (Enter で送信, Shift+Enter で改行)';
+    ? 'メッセージを入力...'
+    : 'メッセージを入力...';
   el.inputMessage.placeholder = placeholder;
 }
 
@@ -1043,11 +1155,12 @@ function applyModeSwitch() {
 
   // チャット内にシステムメッセージ表示
   const modeLabel = MODE_LABELS[newMode];
-  const roleLabel = newRole ? `（${ROLE_LABELS[newRole] || newRole}）` : '';
+  const roleLabel = (newMode !== 'chat' && newRole) ? `（${ROLE_LABELS[newRole] || newRole}）` : '';
   appendSystemMessage(`モードを「${modeLabel}${roleLabel}」に切り替えました`, el.messages);
 
   // UIを再構築
   setupModeUI();
+  saveLoginState(); // 追加
   closeModeSwitch();
 }
 
@@ -1086,8 +1199,14 @@ function updateUserList(users) {
     const isMe = u.username === state.username;
     if (isMe) li.classList.add('is-me');
 
-    const roleLabel = u.role ? ROLE_LABELS[u.role] || u.role : '';
+    // 通常チャット（chatモード）ではロールを表示しない
+    const showRole = state.mode !== 'chat';
+    const roleLabel = (showRole && u.role) ? ROLE_LABELS[u.role] || u.role : '';
     const roleHtml = roleLabel ? `<span class="user-role-badge">${roleLabel}</span>` : '';
+    
+    // 未読バッジ
+    const unread = state.unreadDms[u.username] || 0;
+    const unreadHtml = unread > 0 ? `<span class="unread-badge">${unread}</span>` : '';
 
     li.innerHTML = `
       <div class="user-status-dot"></div>
@@ -1095,11 +1214,12 @@ function updateUserList(users) {
         <span class="user-name">${escHtml(u.username)}${isMe ? ' (あなた)' : ''}</span>
         ${roleHtml}
       </div>
+      ${unreadHtml}
       ${!isMe ? `<button class="btn-dm-open" title="DMを送る" aria-label="DMを送る"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></button>` : ''}
     `;
 
     if (!isMe) {
-      li.addEventListener('click', () => openDmPanel(u.username));
+      li.onclick = () => openDmPanel(u.username);
     }
     el.userList.appendChild(li);
   });
@@ -1111,9 +1231,29 @@ function openDmPanel(targetUser) {
   el.dmOverlay.classList.remove('hidden');
   el.dmInput.focus();
 
+  // 未読をクリア
+  if (state.unreadDms[targetUser]) {
+    delete state.unreadDms[targetUser];
+    // ユーザーリストのバッジを手動で消す
+    const items = el.userList.querySelectorAll('.user-list-item');
+    items.forEach(item => {
+      if (item.querySelector('.user-name').textContent.includes(targetUser)) {
+        const badge = item.querySelector('.unread-badge');
+        if (badge) badge.remove();
+      }
+    });
+  }
+
   el.dmMessages.innerHTML = '';
   const history = state.dmHistory[targetUser] || [];
-  history.forEach(msg => appendTextMessage(msg, el.dmMessages, false));
+  history.forEach(msg => {
+    const isImage = msg.content && msg.content.startsWith('/uploads/');
+    if (isImage) {
+      appendImageMessage(msg, el.dmMessages);
+    } else {
+      appendTextMessage(msg, el.dmMessages, false);
+    }
+  });
   scrollToBottom(el.dmMessages);
 }
 
@@ -1131,16 +1271,60 @@ function handleDmMessage(msg) {
   if (msg.id && state.dmHistory[partner].some(m => m.id === msg.id)) return;
   state.dmHistory[partner].push(msg);
 
-  if (msg.username !== state.username && (!state.activeDmUser || state.activeDmUser !== partner)) {
-    openDmPanel(partner);
-  } else if (state.activeDmUser === partner) {
-    appendTextMessage(msg, el.dmMessages, false);
+  // 画像かテキストか判定
+  const isImage = msg.content && msg.content.startsWith('/uploads/');
+
+  if (msg.username !== state.username) {
+    if (state.activeDmUser === partner && !el.dmOverlay.classList.contains('hidden')) {
+      // 開いている相手からのメッセージならそのまま表示
+      if (isImage) {
+        appendImageMessage(msg, el.dmMessages);
+      } else {
+        appendTextMessage(msg, el.dmMessages, false);
+      }
+    } else {
+      // 開いていない相手からのメッセージなら通知
+      state.unreadDms[partner] = (state.unreadDms[partner] || 0) + 1;
+      showToast(isImage ? '[画像を受信しました]' : msg.content, msg.username);
+      
+      // ユーザーリストのバッジを手動更新
+      const items = el.userList.querySelectorAll('.user-list-item');
+      items.forEach(item => {
+        if (item.querySelector('.user-name').textContent.includes(partner)) {
+          let badge = item.querySelector('.unread-badge');
+          if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'unread-badge';
+            item.querySelector('.user-info').appendChild(badge);
+          }
+          badge.textContent = state.unreadDms[partner];
+        }
+      });
+    }
+  } else {
+    // 自分の送信したメッセージ
+    if (state.activeDmUser === partner) {
+      if (isImage) {
+        appendImageMessage(msg, el.dmMessages);
+      } else {
+        appendTextMessage(msg, el.dmMessages, false);
+      }
+    }
   }
 }
 
-function sendDmMessage() {
+async function sendDmMessage() {
+  if (el.btnDmSend.disabled) return;
+
   const text = el.dmInput.value.trim();
-  if (!text || !state.activeDmUser || el.btnDmSend.disabled) return;
+
+  // 画像が選択されている場合は画像アップロードを優先
+  if (state.dmSelectedFile) {
+    await uploadAndSendDmImage(text);
+    return;
+  }
+
+  if (!text || !state.activeDmUser) return;
 
   sendWsMessage({
     type: 'dm',
@@ -1162,16 +1346,95 @@ el.dmInput.addEventListener('keydown', e => {
 el.btnDmSend.addEventListener('click', sendDmMessage);
 
 function updateDmSendButton() {
-  el.btnDmSend.disabled = el.dmInput.value.trim().length === 0;
+  const hasText  = el.dmInput.value.trim().length > 0;
+  const hasImage = state.dmSelectedFile !== null;
+  el.btnDmSend.disabled = !hasText && !hasImage;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DM画像送信
+═══════════════════════════════════════════════════════════ */
+
+el.btnDmImage.addEventListener('click', () => el.dmFileInput.click());
+
+el.dmFileInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!allowedTypes.includes(file.type)) {
+    alert('対応していないファイル形式です（jpg/jpeg/png/webp のみ）');
+    el.dmFileInput.value = '';
+    return;
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    alert('ファイルサイズが大きすぎます（上限5MB）');
+    el.dmFileInput.value = '';
+    return;
+  }
+
+  state.dmSelectedFile = file;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    el.dmImagePrevThumb.src = ev.target.result;
+    el.dmImagePrevArea.classList.remove('hidden');
+  };
+  reader.readAsDataURL(file);
+  updateDmSendButton();
+});
+
+el.btnDmRemoveImage.addEventListener('click', () => clearDmSelectedImage());
+
+function clearDmSelectedImage() {
+  state.dmSelectedFile = null;
+  el.dmFileInput.value = '';
+  el.dmImagePrevThumb.src = '';
+  el.dmImagePrevArea.classList.add('hidden');
+  updateDmSendButton();
+}
+
+async function uploadAndSendDmImage(captionText) {
+  const file = state.dmSelectedFile;
+  if (!file || !state.activeDmUser) return;
+
+  const formData = new FormData();
+  formData.append('image', file);
+
+  el.btnDmSend.disabled = true;
+
+  try {
+    const resp = await fetch('/upload', { method: 'POST', body: formData });
+    const json = await resp.json();
+
+    if (json.error) {
+      alert(`アップロード失敗: ${json.error}`);
+      return;
+    }
+
+    // 画像URLをDMとして送信
+    sendWsMessage({ type: 'dm', to: state.activeDmUser, content: json.url, msgContentType: 'image' });
+    if (captionText) {
+      sendWsMessage({ type: 'dm', to: state.activeDmUser, content: captionText });
+    }
+
+    el.dmInput.value = '';
+    clearDmSelectedImage();
+  } catch (err) {
+    console.error('DM Upload error:', err);
+    alert('画像のアップロードに失敗しました');
+  } finally {
+    updateDmSendButton();
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════
    ルーム切替（メイン ↔ シークレット）
 ═══════════════════════════════════════════════════════════ */
 
-/** プルダウン変更時にルームを切替 */
 el.roomSelector.addEventListener('change', () => {
   switchRoom(el.roomSelector.value);
+  saveLoginState();
 });
 
 /** ルームを切替える */
@@ -1180,20 +1443,26 @@ function switchRoom(room) {
 
   if (room === 'secret') {
     el.messages.classList.add('hidden');
+    el.gdMessages.classList.add('hidden'); // GD用も消す
     el.secretMessages.classList.remove('hidden');
     el.chatPanelTitle.textContent = '🔒 シークレット';
-    el.inputMessage.placeholder = 'シークレットルームへ送信... (履歴に残りません)';
+    el.inputMessage.placeholder = 'シークレットルームへ送信...';
     el.roomSelector.classList.add('is-secret');
     clearSecretUnread();
   } else {
     el.secretMessages.classList.add('hidden');
-    el.messages.classList.remove('hidden');
+    // モードに応じて出し分け
+    if (state.mode === 'gd') {
+      el.gdMessages.classList.remove('hidden');
+    } else {
+      el.messages.classList.remove('hidden');
+    }
     el.chatPanelTitle.textContent = '💬 チャット';
-    el.inputMessage.placeholder = 'メッセージを入力... (Enter で送信, Shift+Enter で改行)';
+    el.inputMessage.placeholder = 'メッセージを入力...';
     el.roomSelector.classList.remove('is-secret');
   }
 
-  scrollToBottom(room === 'secret' ? el.secretMessages : el.messages);
+  scrollToBottom(room === 'secret' ? el.secretMessages : (state.mode === 'gd' ? el.gdMessages : el.messages));
 }
 
 /** シークレットルームの未読インジケーターを表示 */
@@ -1214,6 +1483,288 @@ function clearSecretUnread() {
    初期化
 ═══════════════════════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════════════════════
+   ログイン状態保持 (localStorage)
+ ═══════════════════════════════════════════════════════════ */
+
+function saveLoginState() {
+  const data = {
+    username: state.username,
+    mode:     state.mode,
+    role:     state.role,
+    passcode: state.passcode,
+    room:     state.currentRoom, // 追加
+    tab:      state.activeTab,   // 追加
+  };
+  localStorage.setItem('gochat_auth', JSON.stringify(data));
+}
+
+function loadLoginState() {
+  const saved = localStorage.getItem('gochat_auth');
+  if (saved) {
+    try {
+      const data = JSON.parse(saved);
+      el.inputUsername.value = data.username || '';
+      el.inputPasscode.value = data.passcode || '';
+      if (data.mode) {
+        state.mode = data.mode;
+        const radio = [...el.modeCards].find(r => r.value === data.mode);
+        if (radio) radio.checked = true;
+        onModeChange(data.mode);
+      }
+      if (data.role) {
+        el.selectRole.value = data.role;
+        state.role = data.role;
+      }
+      
+      if (data.room) state.currentRoom = data.room;
+      if (data.tab)  state.activeTab  = data.tab;
+
+      if (data.username) {
+        // デバウンス的な遅延を入れて入室
+        setTimeout(() => {
+          if (!state.username) joinChat();
+          
+          if (state.currentRoom) {
+            el.roomSelector.value = state.currentRoom;
+            switchRoom(state.currentRoom);
+          }
+          if (state.activeTab && window.innerWidth <= 768) {
+            switchTab(state.activeTab);
+          }
+        }, 500);
+      }
+    } catch (e) {
+      console.warn('Failed to load login state', e);
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   通知トースト
+ ═══════════════════════════════════════════════════════════ */
+
+function showToast(content, sender = '') {
+  const toast = document.createElement('div');
+  toast.className = 'dm-toast';
+  toast.innerHTML = `
+    <div style="flex:1">
+      <div style="font-weight:bold;font-size:12px;margin-bottom:2px">${sender ? sender + ' からのメッセージ' : '通知'}</div>
+      <div>${content}</div>
+    </div>
+  `;
+  toast.onclick = () => {
+    if (sender) openDmPanel(sender);
+    toast.remove();
+  };
+  el.toastContainer.appendChild(toast);
+  setTimeout(() => toast.remove(), 5000);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   タイムキーパー機能 (タイマー & ストップウォッチ)
+ ═══════════════════════════════════════════════════════════ */
+
+// 状態管理の拡張
+state.tkMode = 'timer'; // 'timer' | 'stopwatch'
+state.tkTimer = {
+  remainingMs: 0,
+  isRunning: false,
+  isPaused: false
+};
+state.tkStopwatch = {
+  elapsedMs: 0,
+  isRunning: false,
+  isPaused: false
+};
+
+const elTk = {
+  modeTimerBtn: $('btn-tk-mode-timer'),
+  modeSwBtn:    $('btn-tk-mode-sw'),
+  timerDot:     $('tk-timer-dot'),
+  swDot:        $('tk-sw-dot'),
+  timerSection: $('tk-timer-section'),
+  swSection:    $('tk-sw-section'),
+  swDisplay:    $('tk-sw-display'),
+  swResetBtn:   $('btn-tk-sw-reset'),
+  swStartBtn:   $('btn-tk-sw-start')
+};
+
+/** モード切替 */
+elTk.modeTimerBtn.addEventListener('click', () => switchTkMode('timer'));
+elTk.modeSwBtn.addEventListener('click',    () => switchTkMode('stopwatch'));
+
+function switchTkMode(mode) {
+  state.tkMode = mode;
+  elTk.modeTimerBtn.classList.toggle('active', mode === 'timer');
+  elTk.modeSwBtn.classList.toggle('active',    mode === 'stopwatch');
+  
+  elTk.timerSection.classList.toggle('hidden', mode !== 'timer');
+  elTk.swSection.classList.toggle('hidden',    mode !== 'stopwatch');
+
+  if (mode === 'timer') updateTkTimerDisplay();
+  if (mode === 'stopwatch') updateTkSwDisplay();
+}
+
+/** タイマー表示更新 */
+function updateTkTimerDisplay() {
+  const totalSec = Math.max(0, Math.ceil(state.tkTimer.remainingMs / 1000));
+  const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
+  const s = String(totalSec % 60).padStart(2, '0');
+  el.tkTimerDisplay.textContent = `${m}:${s}`;
+
+  if (totalSec <= 0 && state.tkTimer.isRunning) {
+    state.tkTimer.isRunning = false;
+    state.tkTimer.remainingMs = 0;
+    el.tkTimerDisplay.classList.add('timer-finished');
+    showToast('タイマーが終了しました', '⏱ タイマー');
+    if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
+    
+    // UI復帰
+    el.tkTimerRunning.classList.add('hidden');
+    el.tkTimerSetup.classList.remove('hidden');
+  } else {
+    el.tkTimerDisplay.classList.remove('timer-finished');
+  }
+}
+
+/** ストップウォッチ表示更新 */
+function updateTkSwDisplay() {
+  const ms = state.tkStopwatch.elapsedMs;
+  const totalSec = Math.floor(ms / 1000);
+  const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
+  const s = String(totalSec % 60).padStart(2, '0');
+  const ds = String(Math.floor((ms % 1000) / 100)); // 0.1秒
+  elTk.swDisplay.textContent = `${m}:${s}.${ds}`;
+}
+
+/** インジケーター表示更新 */
+function updateTkIndicators() {
+  elTk.timerDot.classList.toggle('hidden', !state.tkTimer.isRunning);
+  elTk.swDot.classList.toggle('hidden', !state.tkStopwatch.isRunning);
+}
+
+/** 統合インターバル */
+let tkMainInterval = null;
+function startTkSystemInterval() {
+  if (tkMainInterval) return;
+  let lastTick = Date.now();
+  tkMainInterval = setInterval(() => {
+    const now = Date.now();
+    const delta = now - lastTick;
+    lastTick = now;
+
+    // タイマー計算
+    if (state.tkTimer.isRunning && !state.tkTimer.isPaused) {
+      state.tkTimer.remainingMs -= delta;
+      if (state.tkMode === 'timer') updateTkTimerDisplay();
+      if (state.tkTimer.remainingMs <= 0) {
+        if (state.tkMode !== 'timer') updateTkTimerDisplay(); // バックグラウンド時も一応呼ぶ
+      }
+    }
+
+    // ストップウォッチ計算
+    if (state.tkStopwatch.isRunning && !state.tkStopwatch.isPaused) {
+      state.tkStopwatch.elapsedMs += delta;
+      if (state.tkMode === 'stopwatch') updateTkSwDisplay();
+    }
+
+    updateTkIndicators();
+  }, 100);
+}
+
+/** タイマー操作 */
+function initTkTimerPickers() {
+  if (!el.selectTkMin) return;
+  el.selectTkMin.innerHTML = Array.from({length:100}, (_,i)=>`<option value="${i}">${i}</option>`).join('');
+  el.selectTkSec.innerHTML = Array.from({length:12}, (_,i)=>`<option value="${i*5}">${String(i*5).padStart(2,'0')}</option>`).join('');
+}
+initTkTimerPickers();
+
+el.btnTkTimerStartSetup.addEventListener('click', () => {
+  const mins = parseInt(el.selectTkMin.value) || 0;
+  const secs = parseInt(el.selectTkSec.value) || 0;
+  if (mins === 0 && secs === 0) return;
+
+  state.tkTimer.remainingMs = (mins * 60 + secs) * 1000;
+  state.tkTimer.isRunning = true;
+  state.tkTimer.isPaused = false;
+  
+  el.tkTimerSetup.classList.add('hidden');
+  el.tkTimerRunning.classList.remove('hidden');
+  updateTkTimerDisplay();
+  startTkSystemInterval();
+});
+
+el.btnTkTimerPause.addEventListener('click', () => {
+  state.tkTimer.isPaused = !state.tkTimer.isPaused;
+  el.btnTkTimerPause.textContent = state.tkTimer.isPaused ? '再開' : '一時停止';
+  el.btnTkTimerPause.className = state.tkTimer.isPaused ? 'btn-tk-round btn-tk-green' : 'btn-tk-round btn-tk-orange';
+});
+
+el.btnTkTimerCancel.addEventListener('click', () => {
+  state.tkTimer.isRunning = false;
+  state.tkTimer.remainingMs = 0;
+  el.tkTimerRunning.classList.add('hidden');
+  el.tkTimerSetup.classList.remove('hidden');
+});
+
+/** ストップウォッチ操作 */
+elTk.swStartBtn.addEventListener('click', () => {
+  if (!state.tkStopwatch.isRunning || state.tkStopwatch.isPaused) {
+    // 開始または再開
+    state.tkStopwatch.isRunning = true;
+    state.tkStopwatch.isPaused = false;
+    elTk.swStartBtn.textContent = '停止';
+    elTk.swStartBtn.className = 'btn-tk-round btn-tk-red';
+    startTkSystemInterval();
+  } else {
+    // 一時停止
+    state.tkStopwatch.isPaused = true;
+    elTk.swStartBtn.textContent = '開始';
+    elTk.swStartBtn.className = 'btn-tk-round btn-tk-green';
+  }
+});
+
+elTk.swResetBtn.addEventListener('click', () => {
+  state.tkStopwatch.isRunning = false;
+  state.tkStopwatch.isPaused = false;
+  state.tkStopwatch.elapsedMs = 0;
+  elTk.swStartBtn.textContent = '開始';
+  elTk.swStartBtn.className = 'btn-tk-round btn-tk-green';
+  updateTkSwDisplay();
+});
+
+/* ═══════════════════════════════════════════════════════════
+   自動再接続 & Visibility監視
+ ═══════════════════════════════════════════════════════════ */
+
+function tryReconnect() {
+  if (state.isConnected) return;
+  console.log('Attempting auto-reconnect...');
+  connectWebSocket();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !state.isConnected && state.username) {
+    tryReconnect();
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════
+   初期化 & ログアウト
+ ═══════════════════════════════════════════════════════════ */
+
+function logout() {
+  if (confirm('ログアウトして入室画面に戻りますか？')) {
+    localStorage.removeItem('gochat_auth');
+    location.reload(); // 状態をリセットするためにリロード
+  }
+}
+
+el.logoutBtn?.addEventListener('click', logout);
+
 onModeChange('chat');
 updateSendButton();
+loadLoginState(); // 以前のログイン情報を復元
 el.inputUsername.focus();

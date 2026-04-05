@@ -74,27 +74,87 @@ func initDB() {
 	_, _ = db.Exec("ALTER TABLE gd_notes ADD COLUMN updated_at TEXT DEFAULT ''")
 }
 
-// cleanupOldData は1ヶ月以上経過したメッセージとGDメモを論理的・物理的に削除する
+// cleanupOldData は合言葉やモードに応じた期間制限と、件数制限を適用してデータを削除する
 func cleanupOldData() {
 	loc, _ := time.LoadLocation("Asia/Tokyo")
-	cutoff := time.Now().In(loc).AddDate(0, -1, 0).Format(time.RFC3339)
+	now := time.Now().In(loc)
 
-	resM, err := db.Exec("DELETE FROM messages WHERE timestamp < ?", cutoff)
+	// 各種期限の計算
+	cutoff3h := now.Add(-3 * time.Hour).Format(time.RFC3339)
+	cutoff1d := now.AddDate(0, 0, -1).Format(time.RFC3339)
+	cutoff14d := now.AddDate(0, 0, -14).Format(time.RFC3339)
+	cutoff30d := now.AddDate(0, 0, -30).Format(time.RFC3339)
+
+	// 1. 期限切れメッセージの削除 (時間ベース)
+	// 部屋コードなしの面接練習: 3時間
+	db.Exec("DELETE FROM messages WHERE passcode = '' AND mode = 'interview' AND timestamp < ?", cutoff3h)
+	// 画像メッセージ: 1日
+	db.Exec("DELETE FROM messages WHERE type = 'image' AND timestamp < ?", cutoff1d)
+	// 部屋コードあり: 14日
+	db.Exec("DELETE FROM messages WHERE passcode != '' AND timestamp < ?", cutoff14d)
+	// 部屋コードなし（通常等）: 30日
+	db.Exec("DELETE FROM messages WHERE passcode = '' AND mode != 'interview' AND timestamp < ?", cutoff30d)
+
+	// 2. 件数制限による削除
+	// 部屋コードあり: 最新100件、なし: 最新200件
+	limitQuery := `
+		DELETE FROM messages 
+		WHERE id NOT IN (
+			SELECT id FROM (
+				SELECT id, passcode, ROW_NUMBER() OVER (PARTITION BY passcode ORDER BY timestamp DESC) as rn
+				FROM messages
+			) WHERE (passcode != '' AND rn <= 100) OR (passcode = '' AND rn <= 200)
+		)
+	`
+	resL, err := db.Exec(limitQuery)
 	if err == nil {
-		if n, _ := resM.RowsAffected(); n > 0 {
-			log.Printf("古いメッセージを %d 件削除しました", n)
+		if n, _ := resL.RowsAffected(); n > 0 {
+			log.Printf("メッセージの超過分 %d 件を削除しました", n)
 		}
 	} else {
-		log.Printf("古いメッセージ削除エラー: %v", err)
+		log.Printf("メッセージ制限エラー: %v", err)
 	}
 
-	resG, err := db.Exec("DELETE FROM gd_notes WHERE updated_at < ? AND updated_at != ''", cutoff)
+	// 3. GDメモの削除 (合言葉あり/なしに関わらず古いものを削除。面接練習に合わせて3時間または14日...)
+	// ここは安全のため合言葉ありの基準（14日）に合わせる
+	resG, err := db.Exec("DELETE FROM gd_notes WHERE updated_at < ? AND updated_at != ''", cutoff14d)
 	if err == nil {
 		if n, _ := resG.RowsAffected(); n > 0 {
 			log.Printf("古いGDメモを %d 件削除しました", n)
 		}
-	} else {
-		log.Printf("古いGDメモ削除エラー: %v", err)
+	}
+
+	// 4. アップロード画像の物理削除 (1日以上経過したもの)
+	cleanupUploadFiles(now.Add(-24 * time.Hour))
+}
+
+// cleanupUploadFiles は uploads ディレクトリ内の古いファイルを削除する
+func cleanupUploadFiles(before time.Time) {
+	uploadPath := filepath.Join(dataDir, "uploads")
+	files, err := os.ReadDir(uploadPath)
+	if err != nil {
+		log.Printf("uploadsディレクトリの読み取りエラー: %v", err)
+		return
+	}
+
+	count := 0
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		info, err := file.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().Before(before) {
+			err := os.Remove(filepath.Join(uploadPath, file.Name()))
+			if err == nil {
+				count++
+			}
+		}
+	}
+	if count > 0 {
+		log.Printf("古い画像ファイルを %d 件削除しました", count)
 	}
 }
 

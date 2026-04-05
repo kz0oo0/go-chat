@@ -1,0 +1,31 @@
+# fly.toml app configuration file generated for go-chat-kz-noa on 2026-04-05T04:49:15+09:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'go-chat-kz-noa'
+primary_region = 'nrt'
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 1024
+
+[[mounts]]
+  source = 'gochat_data'
+  destination = '/app/data'
+
+[env]
+  DATA_DIR = '/app/data'
+  PORT = '8080'

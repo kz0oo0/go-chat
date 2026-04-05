@@ -58,40 +58,54 @@ func (c *Client) readPump() {
 
 		// joinメッセージ処理
 		if msg.Type == "join" {
+			// 名前重複チェック（システム全体で統一）
+			if c.hub.IsUsernameTaken(msg.Username) {
+				log.Printf("名前重複拒否: %s", msg.Username)
+				errData, _ := json.Marshal(Message{
+					Type:    "error",
+					Content: "同じ名前が存在する為入室できません。",
+				})
+				c.send <- errData
+				time.Sleep(500 * time.Millisecond) // クライアントが受信する時間を稼ぐ
+				return // 登録せずに終了
+			}
+
 			c.username = msg.Username
 			c.mode = msg.Mode
 			c.role = msg.Role
-			c.passcode = msg.Passcode
+			c.passcode = buildEffectiveRoom(msg.Mode, msg.Passcode)
 
 			// ユーザー登録（DBへ）
 			saveUserRegister(c.username)
 			log.Printf("ユーザー登録: %s (mode=%s, passcode=%s)", c.username, c.mode, c.passcode)
 
 			// ── 過去の履歴をDBから取得しこのクライアントだけに送信 ──
+			// 履歴開始マーカー（画面クリアのために必ず送る）
+			if d, err := json.Marshal(Message{Type: "history_sep", Content: "start"}); err == nil {
+				c.send <- d
+			}
+			
 			recentMsgs := getRecentMessages(200, c.passcode)
-
+			for _, hMsg := range recentMsgs {
+				// 面接官専用は面接官のみに送る
+				if hMsg.Type == "interviewer_chat" && c.role != "interviewer" {
+					continue
+				}
+				// DMの場合は当事者のみに送る
+				if hMsg.Type == "dm" && c.username != hMsg.Username && c.username != hMsg.To {
+					continue
+				}
+				if d, err := json.Marshal(hMsg); err == nil {
+					select {
+					case c.send <- d:
+					default:
+						close(c.send)
+						delete(c.hub.clients, c)
+					}
+				}
+			}
+			
 			if len(recentMsgs) > 0 {
-				// 履歴開始マーカー
-				if d, err := json.Marshal(Message{Type: "history_sep", Content: "start"}); err == nil {
-					c.send <- d
-				}
-				for _, hMsg := range recentMsgs {
-					// 面接官専用は面接官のみに送る
-					if hMsg.Type == "interviewer_chat" && c.role != "interviewer" {
-						continue
-					}
-					// DMの場合は当事者のみに送る
-					if hMsg.Type == "dm" && c.username != hMsg.Username && c.username != hMsg.To {
-						continue
-					}
-					if d, err := json.Marshal(hMsg); err == nil {
-						select {
-						case c.send <- d:
-						default:
-						}
-					}
-				}
-				// 履歴終了マーカー
 				if d, err := json.Marshal(Message{Type: "history_sep", Content: "end"}); err == nil {
 					c.send <- d
 				}
@@ -127,21 +141,24 @@ func (c *Client) readPump() {
 			oldPass := c.passcode
 			c.mode = msg.Mode
 			c.role = msg.Role
-			c.passcode = msg.Passcode
-			log.Printf("モード変更: %s -> mode=%s, role=%s, passcode=%s", c.username, c.mode, c.role, c.passcode)
+			c.passcode = buildEffectiveRoom(msg.Mode, msg.Passcode)
+			log.Printf("モード変更: %s -> mode=%s, role=%s, effectivePasscode=%s", c.username, c.mode, c.role, c.passcode)
 
 			// 部屋が変わった場合（モードまたは合言葉が変更された場合）、新しい履歴を送信
 			if oldMode != c.mode || oldPass != c.passcode {
+				// 履歴がない場合でも画面をクリアするために start を必ず送信
+				if d, err := json.Marshal(Message{Type: "history_sep", Content: "start"}); err == nil {
+					c.send <- d
+				}
+
 				recentMsgs := getRecentMessages(200, c.passcode)
-				if len(recentMsgs) > 0 {
-					if d, err := json.Marshal(Message{Type: "history_sep", Content: "start"}); err == nil {
+				for _, hMsg := range recentMsgs {
+					if d, err := json.Marshal(hMsg); err == nil {
 						c.send <- d
 					}
-					for _, hMsg := range recentMsgs {
-						if d, err := json.Marshal(hMsg); err == nil {
-							c.send <- d
-						}
-					}
+				}
+				
+				if len(recentMsgs) > 0 {
 					if d, err := json.Marshal(Message{Type: "history_sep", Content: "end"}); err == nil {
 						c.send <- d
 					}
@@ -197,11 +214,6 @@ func (c *Client) readPump() {
 		// text/image/interviewer_chatにはUUIDを付与（取り消し機能のため）
 		if msg.Type != "note_update" && msg.ID == "" {
 			msg.ID = uuid.New().String()
-		}
-		
-		// 面接練習モードの場合はチャット履歴を残さない（DBに保存しない）
-		if c.mode == "interview" {
-			msg.NoHistory = true
 		}
 		
 		data, _ := json.Marshal(msg)

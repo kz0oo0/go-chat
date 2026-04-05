@@ -18,10 +18,10 @@ func main() {
 	// DB初期化
 	initDB()
 
-	// 1か月（30日）以上経過したデータを1日1回削除する定期処理
+	// 定期的なデータクリーンアップ（1時間おきに実行）
 	go func() {
 		cleanupOldData()
-		ticker := time.NewTicker(24 * time.Hour)
+		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
 		for range ticker.C {
 			cleanupOldData()
