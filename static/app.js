@@ -1634,8 +1634,7 @@ function updateTkSwDisplay() {
   const totalSec = Math.floor(ms / 1000);
   const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
   const s = String(totalSec % 60).padStart(2, '0');
-  const ds = String(Math.floor((ms % 1000) / 100)); // 0.1秒
-  elTk.swDisplay.textContent = `${m}:${s}.${ds}`;
+  elTk.swDisplay.textContent = `${m}:${s}`;
 }
 
 /** インジケーター表示更新 */

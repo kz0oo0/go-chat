@@ -1686,21 +1686,22 @@ html, body {
 .tk-mode-switch {
   display: flex;
   background: rgba(255, 255, 255, 0.05);
-  padding: 2px;
-  border-radius: 10px;
-  margin-bottom: 24px;
+  padding: 3px;
+  border-radius: 99px;
+  margin: 0 auto 24px auto;
   gap: 2px;
+  max-width: 240px;
 }
 
 .tk-mode-btn {
   flex: 1;
   background: transparent;
   border: none;
-  border-radius: 8px;
+  border-radius: 99px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 500;
-  padding: 6px 0;
+  padding: 4px 8px;
   cursor: pointer;
   transition: all 0.2s;
   position: relative;
@@ -1773,6 +1774,11 @@ html, body {
   appearance: none;
   -webkit-appearance: none;
   transition: border-color var(--transition);
+}
+
+.tk-picker-select option {
+  color: #000000;
+  background: #ffffff;
 }
 
 .tk-picker-select:focus {
