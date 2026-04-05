@@ -1686,11 +1686,11 @@ html, body {
 .tk-mode-switch {
   display: flex;
   background: rgba(255, 255, 255, 0.05);
-  padding: 3px;
+  padding: 2px;
   border-radius: 99px;
-  margin: 0 auto 24px auto;
+  margin: 0 auto 16px auto;
   gap: 2px;
-  max-width: 240px;
+  max-width: 170px;
 }
 
 .tk-mode-btn {
@@ -1699,9 +1699,10 @@ html, body {
   border: none;
   border-radius: 99px;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
-  padding: 4px 8px;
+  padding: 4px 6px;
+  white-space: nowrap;
   cursor: pointer;
   transition: all 0.2s;
   position: relative;
