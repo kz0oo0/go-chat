@@ -4,8 +4,8 @@ gochat
 
 # Local database and uploaded data
 # (If you want to keep your project clean for others, ignore the data folder)
-# data/
-# chat.db
+data/
+chat.db
 
 # Large files
 *.log

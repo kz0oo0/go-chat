@@ -752,7 +752,16 @@ html, body {
 .note-textarea:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* 編集権限コントロール */
-.note-edit-control {
+.gd-panel-header {
+  display: flex !important;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+}
+
+#note-edit-control {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -774,6 +783,21 @@ html, body {
 }
 
 .btn-sm:hover { background: var(--accent); color: #fff; }
+.btn-sm:disabled {
+  opacity: 0.8 !important;
+  cursor: default;
+  filter: grayscale(0.5);
+  background: var(--bg-hover) !important;
+  color: var(--text-muted) !important;
+  border-color: var(--border) !important;
+}
+
+#note-edit-control .btn-sm:not(.btn-danger):disabled {
+  background: var(--bg-hover) !important;
+  color: #fff !important;
+  opacity: 0.9 !important;
+  border-color: var(--accent) !important;
+}
 
 /* ── 入力エリア ───────────────────────────────────────────── */
 .chat-footer {
@@ -1083,38 +1107,62 @@ html, body {
 
   .panel-sub {
     position: absolute;
-    top: 0;
+    top: 112px;
     left: 0;
     right: 0;
     bottom: 0;
     width: 100% !important;
     background: var(--bg-secondary);
     z-index: 5;
-    height: 100%;
-    padding-bottom: 74px; /* フッター分の余白を確保 */
+    height: calc(100% - 112px);
+    padding-bottom: 74px;
   }
 
-  /* タブ切替でパネルを表示/非表示 */
-  .panel-chat { flex: 1; }
+  /* GD版ヘッダーのスマホ調整 */
+  .gd-panel-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    padding: 0 !important;
+    border-bottom: none !important;
+    background: transparent !important;
+  }
   
-  .msg { max-width: 85%; }
+  #gd-panel .panel-title {
+    display: none !important;
+  }
 
-  .chat-footer { padding: 8px 12px; }
+  #gd-panel {
+    display: block !important;
+    overflow-y: auto !important;
+    height: 100% !important;
+    -webkit-overflow-scrolling: touch;
+  }
 
-  .btn-icon, .btn-send { width: 40px; height: 40px; min-width: 40px; }
+  .gd-note {
+    display: block !important;
+    overflow: visible !important;
+    height: auto !important;
+    padding: 16px !important;
+  }
 
-  .textarea-message { font-size: 16px; } /* iOS zoom防止 */
-
-  .header-username { max-width: 80px; font-size: 12px; }
-  .badge { font-size: 10px; padding: 2px 8px; }
-
-  .panel-header {
+  #note-edit-control {
+    position: static !important;
+    width: 100% !important;
+    justify-content: flex-start;
+    padding: 12px 0; /* paddingを調整 */
+    background: transparent !important;
+    border-bottom: 1px solid var(--border);
     flex-wrap: wrap;
     gap: 8px;
+    margin: 0 0 16px 0 !important;
+    display: flex !important;
   }
-  .note-edit-control {
-    width: 100%;
-    justify-content: flex-end;
+
+  .edit-mode-label {
+    display: inline-block;
+    margin-right: 4px;
+    font-size: 11px;
+    color: var(--text-muted);
   }
 }
 
@@ -1593,13 +1641,7 @@ html, body {
     padding: 12px 16px;
     gap: 10px;
   }
-  .note-edit-control {
-    width: 100%;
-    justify-content: flex-start;
-    margin-top: 4px;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
+  /* 冗長なクラス定義を削除 */
 
   .sidebar-users {
     display: none;
@@ -1615,6 +1657,8 @@ html, body {
     min-width: 0 !important;
     max-width: 100% !important;
     border-left: none;
+    top: 112px !important;
+    height: calc(100% - 112px) !important;
   }
   .sidebar-users.active {
     display: flex;
@@ -1669,189 +1713,181 @@ html, body {
   to { opacity: 0; }
 }
 
-/* タイムキーパータイマー (iPhone風 - ダークモード) */
-.tk-timer-panel {
-  margin-top: 24px;
+/* タイムキーパータイマー (コンパクトな横長デザイン) */
+.tk-timer-card {
   width: 100%;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  padding: 24px 20px;
-  text-align: center;
-  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-sm);
   color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-/* モード切替（セグメントコントロール） */
+/* モード切替（カード内部のコンパクトなタブ） */
 .tk-mode-switch {
   display: flex;
-  background: rgba(255, 255, 255, 0.05);
+  justify-content: center;
+  background: var(--bg-input);
   padding: 2px;
-  border-radius: 99px;
-  margin: 0 auto 16px auto;
+  border-radius: 8px;
   gap: 2px;
-  max-width: 170px;
 }
 
 .tk-mode-btn {
   flex: 1;
   background: transparent;
   border: none;
-  border-radius: 99px;
-  color: var(--text-secondary);
-  font-size: 10px;
-  font-weight: 500;
-  padding: 4px 6px;
-  white-space: nowrap;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 4px;
   cursor: pointer;
   transition: all 0.2s;
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .tk-mode-btn.active {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--bg-hover);
   color: #fff;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 
 .tk-dot-indicator {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   background: var(--success);
   border-radius: 50%;
   display: inline-block;
-  box-shadow: 0 0 6px var(--success);
+  box-shadow: 0 0 5px var(--success);
 }
 
-.font-mono {
-  font-family: 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', monospace !important;
+/* 表示エリアとコントロールの並び */
+.tk-timer-setup,
+.tk-timer-running,
+.tk-sw-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .tk-timer-display-wrap {
   display: flex;
-  justify-content: center;
   align-items: center;
-  height: 120px;
-  margin-bottom: 24px;
+  justify-content: center;
+  height: auto;
+  margin-bottom: 0;
+  flex: 1;
 }
 
 .tk-timer-display {
   font-family: 'Outfit', sans-serif;
-  font-size: 64px;
-  font-weight: 200;
-  color: #ffffff; /* 数字をはっきりとした白に */
-  letter-spacing: -2px;
+  font-size: 32px;
+  font-weight: 300;
+  color: #ffffff;
+  letter-spacing: -1px;
+  line-height: 1;
 }
 
+/* タイマー設定（ピッカー） */
 .tk-timer-pickers {
   display: flex;
-  justify-content: center;
   align-items: center;
-  gap: 12px;
+  gap: 4px;
 }
 
 .picker-group {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
+  align-items: center;
+  gap: 2px;
 }
 
 .tk-picker-select {
   background: var(--bg-input);
-  border: 1.5px solid var(--border);
-  color: #ffffff; /* 選択肢の文字を白に */
-  padding: 8px 12px;
-  border-radius: 12px;
+  border: 1px solid var(--border);
+  color: #ffffff;
+  padding: 4px 6px;
+  border-radius: 6px;
   font-family: inherit;
-  font-size: 24px;
-  font-weight: 400;
-  width: 72px;
+  font-size: 18px;
+  font-weight: 600;
+  width: 54px;
   text-align: center;
   cursor: pointer;
   appearance: none;
-  -webkit-appearance: none;
-  transition: border-color var(--transition);
-}
-
-.tk-picker-select option {
-  color: #000000;
-  background: #ffffff;
-}
-
-.tk-picker-select:focus {
-  border-color: var(--accent);
   outline: none;
 }
 
-.picker-label {
-  font-size: 16px;
-  color: var(--text-secondary);
-  font-weight: 500;
+.tk-picker-select option {
+  background: #ffffff;
+  color: #000000;
 }
 
+.picker-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ボタンの小型化 */
 .tk-timer-controls {
   display: flex;
-  justify-content: space-between;
-  padding: 0 10px;
+  gap: 6px;
 }
 
 .btn-tk-round {
-  width: 76px;
-  height: 76px;
-  border-radius: 50%;
+  width: auto;
+  height: 32px;
+  min-width: 64px;
+  padding: 0 10px;
+  border-radius: 8px;
   border: none;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s;
   position: relative;
 }
 
-.btn-tk-round::after {
-  content: '';
-  position: absolute;
-  inset: 2px;
-  border: 2px solid rgba(0,0,0,0.3);
-  border-radius: 50%;
-}
+/* 疑似要素の削除（円形ボタン用の影など） */
+.btn-tk-round::after { display: none; }
 
-.btn-tk-round:active { transform: scale(0.96); }
+.btn-tk-round:active { transform: translateY(1px); }
 
-/* iOS Colors */
+/* Colors */
 .btn-tk-gray {
-  background: #333333;
-  color: #ffffff;
+  background: rgba(255,255,255,0.1);
+  color: #ccc;
 }
-.btn-tk-gray:disabled { opacity: 0.4; }
+.btn-tk-gray:hover:not(:disabled) { background: rgba(255,255,255,0.15); color: #fff; }
 
 .btn-tk-green {
-  background: #1d3c1a;
+  background: rgba(29, 209, 88, 0.15);
   color: #30d158;
 }
-
-.btn-tk-red {
-  background: #3a1715;
-  color: #ff453a;
-}
+.btn-tk-green:hover { background: rgba(29, 209, 88, 0.25); }
 
 .btn-tk-orange {
-  background: #412a0d;
+  background: rgba(255, 159, 10, 0.15);
   color: #ff9f0a;
 }
+.btn-tk-orange:hover { background: rgba(255, 159, 10, 0.25); }
 
-@media (max-width: 768px) {
-  .tk-timer-panel.integrated {
-    margin-top: 16px;
-    padding: 16px 12px;
-  }
+.btn-tk-red {
+  background: rgba(255, 69, 58, 0.15);
+  color: #ff453a;
 }
+.btn-tk-red:hover { background: rgba(255, 69, 58, 0.25); }
 
 /* ユーザープロフィールエリア (Header) */
 .user-profile {

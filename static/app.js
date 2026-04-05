@@ -361,9 +361,8 @@ function setupModeUI() {
     showSubPanel();
     el.tabSub.classList.remove('hidden');
     el.tabSub.textContent = '共有メモ';
-    if (role !== 'observer') {
-      el.noteEditControl.classList.remove('hidden');
-    }
+    // 全ユーザーにコントロールを表示
+    el.noteEditControl.classList.remove('hidden');
     updateNoteEditability();
     setupNoteListeners();
 
@@ -952,10 +951,17 @@ function setupNoteListeners() {
 }
 
 function canEditNote() {
+  const { role } = state;
   const { editMode } = state.gdNote;
-  if (editMode === 'all') return true;
-  if (editMode === 'secretary' && state.role === 'secretary') return true;
-  return false;
+
+  // 面接官(interviewer) と 見学者(observer) は常に編集不可
+  if (role === 'interviewer' || role === 'observer') return false;
+
+  // 書記(secretary) は常に編集可能
+  if (role === 'secretary') return true;
+
+  // それ以外の役割（リーダー、タイムキーパーなど）は「全員」設定の時のみ編集可能
+  return editMode === 'all';
 }
 
 function updateNoteEditability() {
@@ -979,17 +985,18 @@ function updateNoteEditability() {
     }
   });
 
-  // 編集権限の切替ボタンは書記のみ表示
+  // 編集権限の切替ボタンは全ユーザーに表示（書記以外は無効化）
   if (el.btnToggleEditMode) {
-    el.btnToggleEditMode.classList.toggle('hidden', state.role !== 'secretary');
+    el.btnToggleEditMode.classList.remove('hidden');
+    el.btnToggleEditMode.disabled = (state.role !== 'secretary');
     el.btnToggleEditMode.textContent =
       state.gdNote.editMode === 'secretary' ? '書記のみ' : '全員';
   }
 
-  // 削除ボタンの表示制御
+  // 削除ボタンの表示制御（全ユーザーに表示、書記以外は無効化）
   if (el.btnClearNote) {
-    // 見学者以外なら削除ボタンを表示
-    el.btnClearNote.classList.toggle('hidden', state.role === 'observer');
+    el.btnClearNote.classList.remove('hidden');
+    el.btnClearNote.disabled = (state.role !== 'secretary');
   }
 }
 

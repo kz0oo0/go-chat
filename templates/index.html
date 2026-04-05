@@ -179,17 +179,19 @@
         <div id="interviewer-messages" class="messages" role="log"></div>
       </div>
 
-      <!-- GD共有メモ -->
-      <div id="gd-panel" class="sub-content hidden">
-        <div class="panel-header">
-          <h2 class="panel-title">共有メモ</h2>
-          <div id="note-edit-control" class="note-edit-control hidden">
-            <span class="edit-mode-label">編集権限:</span>
-            <button id="btn-toggle-edit-mode" class="btn-sm" title="編集権限を切り替え">書記のみ</button>
-            <button id="btn-clear-note" class="btn-sm btn-danger" title="すべての共有メモを完全に消去します">共有メモをリセット</button>
+        <!-- GD共有メモ -->
+        <div id="gd-panel" class="sub-content hidden">
+          <div class="panel-header gd-panel-header">
+            <h2 class="panel-title">共有メモ</h2>
           </div>
-        </div>
-        <div class="gd-note">
+
+          <div class="gd-note">
+            <!-- 編集操作ボタン (スクロール内に配置) -->
+            <div id="note-edit-control" class="note-edit-control hidden">
+              <span class="edit-mode-label">編集権限:</span>
+              <button id="btn-toggle-edit-mode" class="btn-sm" title="編集権限を切り替え">書記のみ</button>
+              <button id="btn-clear-note" class="btn-sm btn-danger" title="すべての共有メモを完全に消去します">共有メモをリセット</button>
+            </div>
           <div class="note-field">
             <label class="note-label">テーマ <span class="note-readonly-badge hidden">（読み取り専用）</span></label>
             <textarea id="note-theme" class="note-textarea" placeholder="ディスカッションのテーマ" rows="2"></textarea>
@@ -223,64 +225,68 @@
           </div>
 
           <!-- タイムキーパー用パネル (タイマー/ストップウォッチ統合) -->
-          <div id="tk-timer-panel" class="tk-timer-panel hidden">
-            <!-- モード切替トグル -->
-            <div class="tk-mode-switch">
-              <button id="btn-tk-mode-timer" class="tk-mode-btn active">
-                タイマー
-                <span id="tk-timer-dot" class="tk-dot-indicator hidden"></span>
-              </button>
-              <button id="btn-tk-mode-sw" class="tk-mode-btn">
-                ストップウォッチ
-                <span id="tk-sw-dot" class="tk-dot-indicator hidden"></span>
-              </button>
-            </div>
+          <div id="tk-timer-panel" class="hidden">
+            <!-- タイムキーパー用カード (ここから枠有りのデザイン) -->
+            <div class="tk-timer-card">
 
-            <!-- タイマーセクション -->
-            <div id="tk-timer-section">
-              <!-- 設定画面 -->
-              <div id="tk-timer-setup" class="tk-timer-setup">
-                <div class="tk-timer-display-wrap">
-                  <div class="tk-timer-pickers">
-                    <div class="picker-group">
-                      <select id="select-tk-min" class="tk-picker-select"></select>
-                      <span class="picker-label">分</span>
-                    </div>
-                    <div class="picker-group">
-                      <select id="select-tk-sec" class="tk-picker-select"></select>
-                      <span class="picker-label">秒</span>
+              <!-- モード切替トグル (中に移動) -->
+              <div class="tk-mode-switch">
+                <button id="btn-tk-mode-timer" class="tk-mode-btn active">
+                  タイマー
+                  <span id="tk-timer-dot" class="tk-dot-indicator hidden"></span>
+                </button>
+                <button id="btn-tk-mode-sw" class="tk-mode-btn">
+                  ストップウォッチ
+                  <span id="tk-sw-dot" class="tk-dot-indicator hidden"></span>
+                </button>
+              </div>
+
+              <!-- タイマーセクション -->
+              <div id="tk-timer-section">
+                <!-- 設定画面 -->
+                <div id="tk-timer-setup" class="tk-timer-setup">
+                  <div class="tk-timer-display-wrap">
+                    <div class="tk-timer-pickers">
+                      <div class="picker-group">
+                        <select id="select-tk-min" class="tk-picker-select"></select>
+                        <span class="picker-label">分</span>
+                      </div>
+                      <div class="picker-group">
+                        <select id="select-tk-sec" class="tk-picker-select"></select>
+                        <span class="picker-label">秒</span>
+                      </div>
                     </div>
                   </div>
+                  <div class="tk-timer-controls">
+                    <button id="btn-tk-timer-cancel-setup" class="btn-tk-round btn-tk-gray" disabled>クリア</button>
+                    <button id="btn-tk-timer-start-setup" class="btn-tk-round btn-tk-green">開始</button>
+                  </div>
                 </div>
-                <div class="tk-timer-controls">
-                  <button id="btn-tk-timer-cancel-setup" class="btn-tk-round btn-tk-gray" disabled>キャンセル</button>
-                  <button id="btn-tk-timer-start-setup" class="btn-tk-round btn-tk-green">開始</button>
+
+                <!-- 実行画面 -->
+                <div id="tk-timer-running" class="tk-timer-running hidden">
+                  <div class="tk-timer-display-wrap">
+                    <div id="tk-timer-display" class="tk-timer-display">00:00</div>
+                  </div>
+                  <div class="tk-timer-controls">
+                    <button id="btn-tk-timer-cancel" class="btn-tk-round btn-tk-gray">リセット</button>
+                    <button id="btn-tk-timer-pause" class="btn-tk-round btn-tk-orange">一時停止</button>
+                  </div>
                 </div>
               </div>
 
-              <!-- 実行画面 -->
-              <div id="tk-timer-running" class="tk-timer-running hidden">
+              <!-- ストップウォッチセクション -->
+              <div id="tk-sw-section" class="tk-sw-section hidden">
                 <div class="tk-timer-display-wrap">
-                  <div id="tk-timer-display" class="tk-timer-display">00:00</div>
+                  <div id="tk-sw-display" class="tk-timer-display font-mono">00:00</div>
                 </div>
                 <div class="tk-timer-controls">
-                  <button id="btn-tk-timer-cancel" class="btn-tk-round btn-tk-gray">キャンセル</button>
-                  <button id="btn-tk-timer-pause" class="btn-tk-round btn-tk-orange">一時停止</button>
+                  <button id="btn-tk-sw-reset" class="btn-tk-round btn-tk-gray">リセット</button>
+                  <button id="btn-tk-sw-start" class="btn-tk-round btn-tk-green">開始</button>
                 </div>
-              </div>
-            </div>
-
-            <!-- ストップウォッチセクション -->
-            <div id="tk-sw-section" class="hidden">
-              <div class="tk-timer-display-wrap">
-                <div id="tk-sw-display" class="tk-timer-display font-mono">00:00</div>
-              </div>
-              <div class="tk-timer-controls">
-                <button id="btn-tk-sw-reset" class="btn-tk-round btn-tk-gray">リセット</button>
-                <button id="btn-tk-sw-start" class="btn-tk-round btn-tk-green">開始</button>
-              </div>
-            </div>
-          </div>
+              </div> <!-- /#tk-sw-section -->
+            </div> <!-- /.tk-timer-card -->
+          </div> <!-- /#tk-timer-panel -->
         </div>
       </div>
 
