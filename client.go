@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,20 +12,30 @@ import (
 
 const (
 	writeWait      = 10 * time.Second
-	pongWait       = 60 * time.Second
-	pingPeriod     = (pongWait * 9) / 10
-	maxMessageSize = 32 * 1024 // 32KB（テキストメッセージ上限）
+	pongWait       = 120 * time.Second
+	pingPeriod     = 25 * time.Second
+	maxMessageSize = 128 * 1024 // 128KB（履歴データ等の増大に対応）
 )
+
+// ────────────────────────────────────────────────────────────
+// 常数
+// ────────────────────────────────────────────────────────────
+const masterPasscode = "R4pN7kW2"
 
 // Client はWebSocket接続ごとの状態を保持する
 type Client struct {
-	hub       *Hub
-	conn      *websocket.Conn
-	send      chan []byte
-	username  string
-	mode      string // "chat" | "interview" | "gd" | "secret"
-	role      string // "interviewer" | "interviewee" | "observer" | "moderator" | "secretary" | "presenter" | "participant"
-	passcode  string // ルームを分けるための合言葉
+	hub          *Hub
+	conn         *websocket.Conn
+	send         chan []byte
+	username     string
+	mode         string // "chat" | "interview" | "gd" | "secret"
+	role         string // "interviewer" | "interviewee" | "observer" | "moderator" | "secretary" | "presenter" | "participant"
+	passcode     string // ルームを分けるための合言葉
+	forceLeave   bool   // 明示的なログアウト（離席猶予なし）
+	isMobile     bool   // デバイス種別
+	isRoleUpdate bool   // 役割変更のみの更新かどうか
+	isAdmin      bool   // 管理者かどうか
+	isHidden     bool   // ゴーストモードかどうか
 }
 
 // readPump はクライアントからのメッセージを読み取りHubへ渡す
@@ -41,7 +52,16 @@ func (c *Client) readPump() {
 		return nil
 	})
 
+	// joinメッセージが来なければ5秒でタイムアウト切断
+	joinDeadline := time.Now().Add(5 * time.Second)
+	joined := false
+
 	for {
+		// joinが完了していない場合はDeadlineを短く保つ
+		if !joined {
+			c.conn.SetReadDeadline(joinDeadline)
+		}
+
 		_, rawMsg, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
@@ -58,50 +78,92 @@ func (c *Client) readPump() {
 
 		// joinメッセージ処理
 		if msg.Type == "join" {
-			// 名前重複チェック（システム全体で統一）
-			if c.hub.IsUsernameTaken(msg.Username) {
-				log.Printf("名前重複拒否: %s", msg.Username)
+			trimmedName := strings.TrimSpace(msg.Username)
+			if trimmedName == "" {
+				log.Printf("名前不正拒否: 空要素またはスペースのみ")
 				errData, _ := json.Marshal(Message{
 					Type:    "error",
-					Content: "同じ名前が存在する為入室できません。",
+					Content: "その名前は使用できません。適切な名前を入力してください。",
 				})
 				c.send <- errData
-				time.Sleep(500 * time.Millisecond) // クライアントが受信する時間を稼ぐ
-				return // 登録せずに終了
+				time.Sleep(500 * time.Millisecond)
+				return
 			}
 
-			c.username = msg.Username
+			// 名前重複チェック（オンライン中および離席猶予中も対象）
+			h := c.hub
+			h.mu.RLock()
+			_, isOnline := h.usernames[trimmedName]
+			_, isOffline := h.offlineUsers[trimmedName]
+			h.mu.RUnlock()
+
+			if !msg.IsAutoLogin && (isOnline || isOffline) {
+				log.Printf("名前重複拒否: %s (online=%v, offline=%v)", trimmedName, isOnline, isOffline)
+				errData, _ := json.Marshal(Message{
+					Type:    "error",
+					Content: "同じ名前が存在する為入室出来ません。",
+				})
+				c.send <- errData
+				time.Sleep(500 * time.Millisecond)
+				return
+			}
+
+			rawPasscode := strings.TrimSpace(msg.Passcode)
+			rawPasscode = strings.ReplaceAll(rawPasscode, "　", " ") // 全角スペースを半角に変換
+			isAdmin := false
+			if rawPasscode == masterPasscode {
+				isAdmin = true
+				msg.Passcode = "" // グローバル部屋
+			} else if strings.HasPrefix(rawPasscode, masterPasscode+" ") {
+				isAdmin = true
+				msg.Passcode = strings.TrimPrefix(rawPasscode, masterPasscode+" ")
+			}
+			log.Printf("管理者判定: raw=%s, isAdmin=%v, effective=%s", rawPasscode, isAdmin, msg.Passcode)
+
+			c.username = trimmedName
 			c.mode = msg.Mode
 			c.role = msg.Role
-			c.passcode = buildEffectiveRoom(msg.Mode, msg.Passcode)
+			c.isMobile = msg.IsMobile
+			c.isAdmin = isAdmin
+			c.isHidden = msg.IsHidden 
+			// 入室時のモードに合わせて合言葉を正規化（二重付与防止）
+			c.passcode = buildEffectiveRoom(c.mode, msg.Passcode)
 
 			// ユーザー登録（DBへ）
 			saveUserRegister(c.username)
 			log.Printf("ユーザー登録: %s (mode=%s, passcode=%s)", c.username, c.mode, c.passcode)
 
-			// ── 過去の履歴をDBから取得しこのクライアントだけに送信 ──
-			// 履歴開始マーカー（画面クリアのために必ず送る）
+			// 1. まず管理者権限情報 (Welcome) を送る（これでしクライアント側の state.isAdmin が確定する）
+			welcome, _ := json.Marshal(Message{
+				Type:     "welcome",
+				IsAdmin:  c.isAdmin,
+				IsHidden: c.isHidden,
+				Mode:     c.mode, // 追加: 初期UI同期用
+				Role:     c.role, // 追加: 初期UI同期用
+				Passcode: msg.Passcode, 
+				Content:  "Welcome to GoChat",
+			})
+			c.send <- welcome
+
+			// 2. 次に過去の履歴を送る
 			if d, err := json.Marshal(Message{Type: "history_sep", Content: "start"}); err == nil {
 				c.send <- d
 			}
 			
-			recentMsgs := getRecentMessages(200, c.passcode)
-			for _, hMsg := range recentMsgs {
-				// 面接官専用は面接官のみに送る
-				if hMsg.Type == "interviewer_chat" && c.role != "interviewer" {
+			recentMsgs := getRecentMessages(100, c.passcode)
+			for i, hMsg := range recentMsgs {
+				// 面接官専用は面接官（または管理者）のみに送る
+				if hMsg.Type == "interviewer_chat" && c.role != "interviewer" && !c.isAdmin {
 					continue
 				}
-				// DMの場合は当事者のみに送る
-				if hMsg.Type == "dm" && c.username != hMsg.Username && c.username != hMsg.To {
-					continue
-				}
+				// 履歴メッセージとして送信
 				if d, err := json.Marshal(hMsg); err == nil {
-					select {
-					case c.send <- d:
-					default:
-						close(c.send)
-						delete(c.hub.clients, c)
-					}
+					c.send <- d
+				}
+				
+				// 10件ごとに少し待機
+				if i > 0 && i%10 == 0 {
+					time.Sleep(1 * time.Millisecond)
 				}
 			}
 			
@@ -111,41 +173,102 @@ func (c *Client) readPump() {
 				}
 			}
 
-			// 最新のGD共有メモをDBから取得し送信（GDモードでない場合も一旦送っておく）
+			// 3. 最新のGD共有メモを送信
 			gdNote := getGDNote(c.passcode)
 			if d, err := json.Marshal(Message{Type: "note_update", Note: gdNote}); err == nil {
 				c.send <- d
 			}
 
-
-			// 入室通知（全体へブロードキャスト）
-			sysMsg := Message{
-				Type:      "system",
-				Content:   c.username + " さんが入室しました",
-				Timestamp: nowJST(),
-				Passcode:  c.passcode,
-			}
-			if c.mode == "interview" {
-				sysMsg.NoHistory = true
-			}
-			data, _ := json.Marshal(sysMsg)
-			c.hub.broadcast <- BroadcastEntry{data: data, msgType: "system"}
-			// usernameマップに登録してユーザーリストを更新
+			// ユーザー登録と入室通知
+			joined = true
+			c.conn.SetReadDeadline(time.Now().Add(pongWait))
 			c.hub.userJoined <- c
+			continue
+		}
+
+		// pingメッセージ処理 (Heartbeat)
+		if msg.Type == "ping" {
+			pong, _ := json.Marshal(Message{Type: "pong"})
+			c.send <- pong
 			continue
 		}
 
 		// mode_changeメッセージ処理: サーバー側のmode/role/passcodeを更新
 		if msg.Type == "mode_change" {
 			oldMode := c.mode
+			oldRole := c.role
 			oldPass := c.passcode
+			wasAdmin := c.isAdmin
+
+			// 管理者コードの解析ロジックをモード切替時にも適用
+			rawPass := strings.TrimSpace(msg.Passcode)
+			rawPass = strings.ReplaceAll(rawPass, "　", " ") // 全角スペース対応
+			effectivePass := rawPass
+			newIsAdmin := wasAdmin // すでに管理者なら維持する
+			if rawPass == "" {
+				// パスコードが空の場合は現在の効果的なパスコードを維持
+				_, effectivePass = splitEffectiveRoom(c.passcode)
+			} else {
+				if rawPass == masterPasscode {
+					effectivePass = ""
+					newIsAdmin = true
+				} else if strings.HasPrefix(rawPass, masterPasscode+" ") {
+					effectivePass = strings.TrimPrefix(rawPass, masterPasscode+" ")
+					newIsAdmin = true
+				} else {
+					// 新しい（管理者以外の）パスコードが明示的に入力された場合は、その部屋の一般ユーザーになる
+					newIsAdmin = false
+				}
+			}
+
+			// 全ての状態を更新
+			c.isAdmin = newIsAdmin
 			c.mode = msg.Mode
 			c.role = msg.Role
-			c.passcode = buildEffectiveRoom(msg.Mode, msg.Passcode)
-			log.Printf("モード変更: %s -> mode=%s, role=%s, effectivePasscode=%s", c.username, c.mode, c.role, c.passcode)
+			c.passcode = buildEffectiveRoom(msg.Mode, effectivePass)
+
+			// 常にwelcomeメッセージを送ってクライアントと同期（役割変更などを確実に反映させる）
+			welcomePass := effectivePass
+			if c.isAdmin {
+				welcomePass = rawPass
+			}
+			welcome, _ := json.Marshal(Message{
+				Type:     "welcome",
+				IsAdmin:  c.isAdmin,
+				IsHidden: c.isHidden,
+				Mode:     c.mode,
+				Role:     c.role,
+				Passcode: welcomePass,
+				Content:  "設定を更新しました",
+			})
+			c.send <- welcome
+			log.Printf("モード変更: %s -> mode=%s, role=%s, effectivePasscode=%s, isAdmin=%v", c.username, c.mode, c.role, c.passcode, c.isAdmin)
+
+			// 管理者リストを即座に更新（モード切り替えタグを反映させるため）
+			c.hub.broadcastAdminRoomsList()
+
+			// 管理者に昇格した場合は即座に部屋リストを要求させる
+			if !wasAdmin && c.isAdmin {
+				c.hub.adminAction <- adminActionReq{client: c, msg: Message{Type: "admin_get_rooms"}}
+			}
 
 			// 部屋が変わった場合（モードまたは合言葉が変更された場合）、新しい履歴を送信
 			if oldMode != c.mode || oldPass != c.passcode {
+				c.isRoleUpdate = false
+				// 元の部屋に退出メッセージを送信 (管理者の場合は抑制)
+				if oldPass != c.passcode && !c.isAdmin {
+					leaveMsg := Message{
+						Type:      "system",
+						Content:   c.username + " さんが退出しました",
+						Timestamp: nowJST(),
+						Passcode:  oldPass,
+						NoHistory: true,
+					}
+					if leaveData, err := json.Marshal(leaveMsg); err == nil {
+						c.hub.broadcast <- BroadcastEntry{data: leaveData, msgType: "system"}
+					}
+				}
+
 				// 履歴がない場合でも画面をクリアするために start を必ず送信
 				if d, err := json.Marshal(Message{Type: "history_sep", Content: "start"}); err == nil {
 					c.send <- d
@@ -153,6 +276,10 @@ func (c *Client) readPump() {
 
 				recentMsgs := getRecentMessages(200, c.passcode)
 				for _, hMsg := range recentMsgs {
+					// 面接官専用チャットのフィルタリングを管理者のみバイパス
+					if hMsg.Type == "interviewer_chat" && c.role != "interviewer" && !c.isAdmin {
+						continue
+					}
 					if d, err := json.Marshal(hMsg); err == nil {
 						c.send <- d
 					}
@@ -168,11 +295,40 @@ func (c *Client) readPump() {
 				if d, err := json.Marshal(Message{Type: "note_update", Note: gdNote}); err == nil {
 					c.send <- d
 				}
+			} else {
+				// 部屋は同じで役割等だけ変更された場合
+				c.isRoleUpdate = true
+				if oldRole != c.role {
+					roleMsg := Message{
+						Type:      "system",
+						Content:   c.username + " さんが役割を変更しました",
+						Timestamp: nowJST(),
+						Passcode:  c.passcode,
+						NoHistory: true,
+					}
+					if roleData, err := json.Marshal(roleMsg); err == nil {
+						c.hub.broadcast <- BroadcastEntry{data: roleData, msgType: "system"}
+					}
+				}
 			}
 
-			// モードや役割が変更されたのでユーザーリストを再配信
+			// モードや役割が変更されたのでユーザーリストと部屋リストを再配信
 			c.hub.userJoined <- c
+			c.hub.broadcastAdminRoomsList()
 			continue
+		}
+
+		// status_changeメッセージ処理: バックグラウンド/フォアグラウンドの状態変更
+		if msg.Type == "status_change" {
+			c.hub.statusChange <- statusChangeRequest{client: c, isOnline: msg.IsOnline}
+			continue
+		}
+
+		// logoutメッセージ処理
+		if msg.Type == "logout" {
+			c.forceLeave = true
+			log.Printf("ログアウト要請: %s", c.username)
+			return // 切断へ
 		}
 
 		// deleteメッセージ処理
@@ -191,12 +347,23 @@ func (c *Client) readPump() {
 			continue
 		}
 
+		// 管理者アクションのハンドリング部
+		if msg.Type == "kick" || msg.Type == "rename_user" || msg.Type == "ghost_toggle" || 
+		   msg.Type == "room_reset" || msg.Type == "admin_get_rooms" || msg.Type == "admin_delete_room" ||
+		   msg.Type == "admin_broadcast" || msg.Type == "admin_get_peek_history" || msg.Type == "admin_join_room" {
+			if c.isAdmin {
+				c.hub.adminAction <- adminActionReq{client: c, msg: msg}
+			}
+			continue
+		}
+
 		// dmメッセージ処理: 全体履歴に保存し当事者のみに配信
 		if msg.Type == "dm" {
 			if msg.To != "" && msg.To != c.username {
 				msg.Username = c.username
 				msg.Timestamp = nowJST()
 				msg.Passcode = c.passcode // DMにも合言葉を付与（合言葉なしDMなら空）
+				msg.IsAdmin = c.isAdmin
 				msg.ID = uuid.New().String() // DMも取り消しできるようにID付与
 				data, _ := json.Marshal(msg)
 				c.hub.sendToUser(msg.To, data)   // 受信者へ
@@ -211,6 +378,7 @@ func (c *Client) readPump() {
 		msg.Mode = c.mode
 		msg.Passcode = c.passcode
 		msg.Timestamp = nowJST()
+		msg.IsAdmin = c.isAdmin // 管理者情報を付与
 		// text/image/interviewer_chatにはUUIDを付与（取り消し機能のため）
 		if msg.Type != "note_update" && msg.ID == "" {
 			msg.ID = uuid.New().String()

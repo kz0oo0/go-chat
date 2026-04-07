@@ -37,6 +37,9 @@ func main() {
 		serveWs(hub, w, r)
 	})
 	http.HandleFunc("/upload", uploadHandler)
+	http.HandleFunc("/api/check-name", func(w http.ResponseWriter, r *http.Request) {
+		checkNameHandler(hub, w, r)
+	})
 	http.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(filepath.Join(dataDir, "uploads")))))
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 

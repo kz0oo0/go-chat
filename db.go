@@ -44,7 +44,8 @@ func initDB() {
 		role TEXT,
 		mode TEXT,
 		to_user TEXT,
-		passcode TEXT
+		passcode TEXT,
+		is_admin INTEGER DEFAULT 0
 	);
 
 	CREATE TABLE IF NOT EXISTS users (
@@ -68,10 +69,19 @@ func initDB() {
 		log.Fatalf("テーブル作成に失敗しました: %v", err)
 	}
 
-	// 既存DBにpasscodeカラムがない場合は追加
+	// 既存DBに更新が必要なカラムを追加
 	_, _ = db.Exec("ALTER TABLE messages ADD COLUMN passcode TEXT DEFAULT ''")
-	// 既存DBにupdated_atがない場合は追加
+	_, _ = db.Exec("ALTER TABLE messages ADD COLUMN is_admin INTEGER DEFAULT 0")
 	_, _ = db.Exec("ALTER TABLE gd_notes ADD COLUMN updated_at TEXT DEFAULT ''")
+	_, _ = db.Exec("ALTER TABLE gd_notes ADD COLUMN mode TEXT DEFAULT 'GroupDiscussion'") // 以前の gd 用にデフォルト設定
+
+	// データ移行: gd -> GroupDiscussion
+	// 1. messagesテーブルの mode カラム
+	_, _ = db.Exec("UPDATE messages SET mode = 'GroupDiscussion' WHERE mode = 'gd'")
+	// 2. messagesテーブルの passcode 接頭辞 (gd|A -> GroupDiscussion|A)
+	_, _ = db.Exec("UPDATE messages SET passcode = 'GroupDiscussion|' || SUBSTR(passcode, 4) WHERE passcode LIKE 'gd|%'")
+	// 3. gd_notesテーブルの passcode 接頭辞
+	_, _ = db.Exec("UPDATE gd_notes SET passcode = 'GroupDiscussion|' || SUBSTR(passcode, 4) WHERE passcode LIKE 'gd|%'")
 }
 
 // cleanupOldData は合言葉やモードに応じた期間制限と、件数制限を適用してデータを削除する
@@ -165,10 +175,14 @@ func saveMessage(m *Message) {
 	}
 	
 	query := `
-		INSERT OR REPLACE INTO messages (id, type, username, content, timestamp, role, mode, to_user, passcode)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT OR REPLACE INTO messages (id, type, username, content, timestamp, role, mode, to_user, passcode, is_admin)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := db.Exec(query, m.ID, m.Type, m.Username, m.Content, m.Timestamp, m.Role, m.Mode, m.To, m.Passcode)
+	isAdmInt := 0
+	if m.IsAdmin {
+		isAdmInt = 1
+	}
+	_, err := db.Exec(query, m.ID, m.Type, m.Username, m.Content, m.Timestamp, m.Role, m.Mode, m.To, m.Passcode, isAdmInt)
 	if err != nil {
 		log.Printf("DB保存エラー: %v", err)
 	}
@@ -186,7 +200,7 @@ func markMessageDeleted(id string) {
 // getRecentMessages は履歴を LIMIT 件取得する（特定の合言葉に基づいたフィルタリング）
 func getRecentMessages(limit int, passcode string) []*Message {
 	query := `
-		SELECT id, type, username, content, timestamp, role, mode, to_user, passcode 
+		SELECT id, type, username, content, timestamp, role, mode, to_user, passcode, is_admin 
 		FROM messages 
 		WHERE passcode = ? OR (type = 'dm' AND (username = ? OR to_user = ?))
 		ORDER BY timestamp DESC 
@@ -206,9 +220,10 @@ func getRecentMessages(limit int, passcode string) []*Message {
 		var m Message
 		// NULL回避のために sql.NullString などを経由するのが安全
 		var id, typ, user, cont, ts, role, mode, to, pc sql.NullString
+		var isAdmInt int
 		
-		if err := rows.Scan(&id, &typ, &user, &cont, &ts, &role, &mode, &to, &pc); err != nil {
-			log.Printf("Scanエラー: %v", err)
+		if err := rows.Scan(&id, &typ, &user, &cont, &ts, &role, &mode, &to, &pc, &isAdmInt); err != nil {
+			log.Printf("履歴パースエラー: %v", err)
 			continue
 		}
 		m.ID = id.String
@@ -220,6 +235,7 @@ func getRecentMessages(limit int, passcode string) []*Message {
 		m.Mode = mode.String
 		m.To = to.String
 		m.Passcode = pc.String
+		m.IsAdmin = isAdmInt == 1
 
 		msgs = append(msgs, &m)
 	}
@@ -247,7 +263,7 @@ func saveGDNote(n *GDNote, passcode string) {
 	}
 }
 
-// clearGDNote はGDメモの全フィールドを空文字に更新する（部屋リセット用）
+// clearGDNote はGDメモの全フィールドを空文字に更新する（チャットリセット用）
 func clearGDNote(passcode string) {
 	query := `
 		UPDATE gd_notes 
@@ -293,4 +309,174 @@ func saveUserRegister(username string) {
 	if err != nil {
 		log.Printf("ユーザー保存エラー: %v", err)
 	}
+}
+
+// renameUserInDB はユーザー名をDBの全箇所（送信者・受信者）で更新する
+func renameUserInDB(oldName, newName string) {
+	// 送信者名の更新
+	query1 := `UPDATE messages SET username = ? WHERE username = ?`
+	_, err1 := db.Exec(query1, newName, oldName)
+	if err1 != nil {
+		log.Printf("ユーザー名更新エラー(送信者): %v", err1)
+	}
+
+	// 受信者名(DM)の更新
+	query2 := `UPDATE messages SET to_user = ? WHERE to_user = ?`
+	_, err2 := db.Exec(query2, newName, oldName)
+	if err2 != nil {
+		log.Printf("ユーザー名更新エラー(受信者): %v", err2)
+	}
+}
+
+// clearChatHistory は特定のチャットモードのメッセージのみを削除する
+func clearChatHistory(exactPasscode string) {
+	queryMessages := `DELETE FROM messages WHERE passcode = ?`
+	_, err := db.Exec(queryMessages, exactPasscode)
+	if err != nil {
+		log.Printf("チャット履歴削除エラー: %v", err)
+	}
+}
+
+// clearRoomData は特定の部屋の全メッセージと共有メモ、画像をクリアする（物理削除）
+func clearRoomData(passcode string) {
+	// 全バリエーション（通常, GD, 面接）を対象にする。passcode は生の合言葉を想定。
+	variants := []interface{}{passcode, "GroupDiscussion|" + passcode, "interview|" + passcode}
+	
+	// メッセージ削除
+	queryMessages := `DELETE FROM messages WHERE passcode IN (?, ?, ?)`
+	_, err := db.Exec(queryMessages, variants...)
+	if err != nil {
+		log.Printf("部屋メッセージ一括削除エラー: %v", err)
+	}
+
+	// 共有メモ削除 (物理削除)
+	queryNotes := `DELETE FROM gd_notes WHERE passcode IN (?, ?, ?)`
+	_, err = db.Exec(queryNotes, variants...)
+	if err != nil {
+		log.Printf("部屋メモ一括削除エラー: %v", err)
+	}
+}
+
+// getAllPasscodesWithData は、メッセージ履歴か共有メモのいずれかが存在するすべての合言葉を返す
+func getAllPasscodesWithData() []string {
+	query := `
+		SELECT DISTINCT passcode FROM messages WHERE type NOT IN ('deleted', 'system')
+		UNION
+		SELECT passcode FROM gd_notes
+	`
+	rows, err := db.Query(query)
+	if err != nil {
+		log.Printf("全部屋コード取得エラー: %v", err)
+		return nil
+	}
+	defer rows.Close()
+
+	var passcodes []string
+	for rows.Next() {
+		var pc sql.NullString
+		if err := rows.Scan(&pc); err != nil {
+			continue
+		}
+		passcodes = append(passcodes, pc.String)
+	}
+	return passcodes
+}
+
+// getLastActivityByPasscode は各部屋の最終アクティビティ日時をマップで返す（モード接頭辞を無視して集計、未発言の部屋も考慮）
+type ActivityInfo struct {
+	Timestamp string
+	Mode      string
+}
+
+func getLastActivityByPasscode() map[string]ActivityInfo {
+	// メッセージがない部屋でもソートできるように 1970-01-01 をデフォルトにする
+	// また、合言葉登録（gd_notes）がある場合も部屋として集計対象に含める
+	query := `
+		SELECT raw_pc, last_at, mode 
+		FROM (
+			SELECT 
+				raw_pc, 
+				last_at, 
+				mode,
+				ROW_NUMBER() OVER (PARTITION BY raw_pc ORDER BY last_at DESC) as rn
+			FROM (
+				SELECT 
+					CASE 
+						WHEN passcode LIKE 'GroupDiscussion|%' THEN substr(passcode, 17)
+						WHEN passcode LIKE 'interview|%' THEN substr(passcode, 11)
+						ELSE passcode 
+					END as raw_pc,
+					timestamp as last_at,
+					mode
+				FROM messages
+				WHERE type NOT IN ('deleted', 'system')
+				UNION ALL
+				SELECT 
+					CASE 
+						WHEN passcode LIKE 'GroupDiscussion|%' THEN substr(passcode, 17)
+						WHEN passcode LIKE 'interview|%' THEN substr(passcode, 11)
+						ELSE passcode 
+					END as raw_pc,
+					updated_at as last_at,
+					'GroupDiscussion' as mode
+				FROM gd_notes
+				WHERE updated_at != ''
+			)
+		) WHERE rn = 1
+	`
+	rows, err := db.Query(query)
+	if err != nil {
+		log.Printf("最終アクティビティ取得エラー: %v", err)
+		return nil
+	}
+	defer rows.Close()
+
+	result := make(map[string]ActivityInfo)
+	for rows.Next() {
+		var pc, last, mode sql.NullString
+		if err := rows.Scan(&pc, &last, &mode); err != nil {
+			continue
+		}
+		result[pc.String] = ActivityInfo{
+			Timestamp: last.String,
+			Mode:      mode.String,
+		}
+	}
+	return result
+}
+
+// isRoomEmpty は指定された生の合言葉（またはそのバリエーション）にメッセージやメモが存在するか判定する
+func isRoomEmpty(rawPass string) bool {
+	if rawPass == "" {
+		return false // メインルームは消さない
+	}
+
+	// 1. メッセージの有無を確認（取り消されたメッセージやシステムメッセージは「中身」とはみなさない）
+	var msgCount int
+	queryMsg := `SELECT COUNT(*) FROM messages WHERE passcode IN (?, ?, ?) AND type NOT IN ('deleted', 'system')`
+	db.QueryRow(queryMsg, rawPass, "GroupDiscussion|"+rawPass, "interview|"+rawPass).Scan(&msgCount)
+	if msgCount > 0 {
+		return false
+	}
+
+	// 2. 共有メモの有無（中身があるか）を確認
+	queryNotes := `SELECT theme, premise, issues, opinions, conclusion, summary FROM gd_notes WHERE passcode IN (?, ?, ?)`
+	rows, err := db.Query(queryNotes, rawPass, "GroupDiscussion|"+rawPass, "interview|"+rawPass)
+	if err != nil {
+		return true // クエリに失敗した場合は空とみなしてよい
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var th, pr, is, op, co, su sql.NullString
+		if err := rows.Scan(&th, &pr, &is, &op, &co, &su); err != nil {
+			continue
+		}
+		// フィールドが1つでも空でなければ「空ではない」と判定
+		if th.String != "" || pr.String != "" || is.String != "" || op.String != "" || co.String != "" || su.String != "" {
+			return false
+		}
+	}
+
+	return true
 }

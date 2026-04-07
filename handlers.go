@@ -30,17 +30,26 @@ type Message struct {
 	Role      string   `json:"role"`
 	Mode      string   `json:"mode"`
 	To        string   `json:"to,omitempty"`
-	Passcode  string   `json:"passcode,omitempty"`
-	Users     []User   `json:"users,omitempty"`
-	Note      *GDNote  `json:"note,omitempty"`
-	NoHistory bool     `json:"noHistory,omitempty"` // trueの場合、サーバーの履歴に保存しない
+	Passcode  string   `json:"passcode"`
+	Users     []User   `json:"users"`
+	Note           *GDNote  `json:"note,omitempty"`
+	NoHistory      bool     `json:"noHistory,omitempty"` // trueの場合、サーバーの履歴に保存しない
+	IsOnline       bool     `json:"is_online"`           // ステータス変更用
+	MsgContentType string   `json:"msgContentType,omitempty"` // 画像等のコンテンツ種別
+	IsMobile       bool     `json:"isMobile,omitempty"`      // デバイス種別判別用
+	IsAutoLogin    bool     `json:"isAutoLogin,omitempty"`   // 自動復帰・リロード時のフラグ
+	IsAdmin        bool     `json:"isAdmin,omitempty"`       // 管理者権限フラグ
+	IsHidden       bool     `json:"isHidden,omitempty"`      // ゴーストモード用フラグ
 }
 
 // User はユーザーの基本情報を保持する
 type User struct {
-	Username string `json:"username"`
-	Role     string `json:"role"`
-	Mode     string `json:"mode"`
+	Username  string `json:"username"`
+	Role      string `json:"role"`
+	Mode      string `json:"mode"`
+	IsOnline  bool   `json:"is_online"`
+	IsAdmin   bool   `json:"isAdmin,omitempty"`
+	Timestamp string `json:"timestamp,omitempty"`
 }
 
 // GDNote はGD練習モードの共有メモ構造体
@@ -88,10 +97,10 @@ func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	client := &Client{
 		hub:  hub,
 		conn: conn,
-		send: make(chan []byte, 256),
+		send: make(chan []byte, 1024),
 	}
 	client.hub.register <- client
-
+	
 	go client.writePump()
 	go client.readPump()
 }
@@ -176,6 +185,23 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	imageURL := fmt.Sprintf("/uploads/%s", filename)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"url": imageURL})
+}
+
+// checkNameHandler は指定されたユーザー名が使用可能かどうかを確認する
+func checkNameHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"available": false, "error": "名前を入力してください"})
+		return
+	}
+
+	available := !hub.IsUsernameTaken(name)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"available": available,
+	})
 }
 
 // respondError はJSONエラーレスポンスを返す

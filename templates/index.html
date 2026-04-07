@@ -8,17 +8,17 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=5">
+  <link rel="stylesheet" href="/static/style.css?v=13">
 </head>
 <body>
 
 <!-- ═══════════════════════════════════════════
-     入室画面
-═══════════════════════════════════════════ -->
+     入室画面 (プレミアム・デザイン復元)
+     ═══════════════════════════════════════════ -->
 <div id="login-screen" class="login-screen">
   <div class="login-card">
     <div class="login-logo">
-      <span class="logo-icon">💬</span>
+      <span class="logo-icon" aria-hidden="true">💬</span>
       <h1 class="login-title">GoChat</h1>
       <p class="login-subtitle">リアルタイムチャット</p>
     </div>
@@ -38,7 +38,7 @@
         <span id="username-error" class="form-error hidden">表示名を入力してください</span>
       </div>
 
-      <!-- モード選択 -->
+      <!-- モード選択 (プレミアム説明付き) -->
       <div class="form-group">
         <label class="form-label">利用モード</label>
         <div class="mode-cards">
@@ -53,14 +53,14 @@
             <span class="mode-desc">面接を模擬練習</span>
           </label>
           <label class="mode-card" id="mode-card-gd">
-            <input type="radio" name="mode" value="gd">
+            <input type="radio" name="mode" value="GroupDiscussion">
             <span class="mode-name">GD練習</span>
             <span class="mode-desc">グループディスカッション</span>
           </label>
         </div>
       </div>
 
-      <!-- 役割選択（モード依存） -->
+      <!-- 役割選択 (モード依存) -->
       <div id="role-group" class="form-group hidden">
         <label for="select-role" class="form-label">役割</label>
         <select id="select-role" class="form-select">
@@ -68,7 +68,7 @@
         </select>
       </div>
 
-      <!-- 部屋コード (個人間やり取り用) -->
+      <!-- 部屋コード (個人間やり取り用、詳細ヒント復元) -->
       <div id="passcode-group" class="form-group">
         <label for="input-passcode" class="form-label">部屋コード <span class="form-label-hint">（任意）</span></label>
         <input
@@ -79,9 +79,8 @@
           maxlength="20"
           autocomplete="off"
         >
-        <span class="form-hint">空欄の場合は共通ルームになります。面接・GD練習を別室で分ける場合に入力してください。<br><span style="color:var(--accent-hover)">💾 保存期間: 14日／100件</span></span>
+        <span class="form-hint">空欄の場合は共通ルームになります。<br><span style="color:var(--accent-hover)">💾 保存期間: 14日／100件</span></span>
       </div>
-
 
       <!-- 入室ボタン -->
       <button id="btn-join" class="btn-primary btn-join">
@@ -90,25 +89,28 @@
           <path d="M13 5l7 7-7 7M5 12h15"/>
         </svg>
       </button>
+
+      <!-- エラーメッセージ (名前重複など) -->
+      <div id="login-error" class="login-error hidden"></div>
     </div>
   </div>
 </div>
 
 <!-- ═══════════════════════════════════════════
-     チャット画面
-═══════════════════════════════════════════ -->
+     チャット画面 (プレミアム・UI復元)
+     ═══════════════════════════════════════════ -->
 <div id="chat-screen" class="chat-screen hidden">
 
-  <!-- ヘッダー -->
+  <!-- ヘッダー (ID復元済、ツールチップ詳細化) -->
   <header class="chat-header">
     <div class="header-left">
       <span class="header-logo">💬</span>
       <span class="header-app-name">GoChat</span>
     </div>
     <div class="header-right">
-      <button id="btn-switch-mode" class="btn-switch-mode" title="モードを切り替える" aria-label="モード切替">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+      <button id="btn-switch-mode" class="btn-switch-mode" title="練習モードや部屋コードを切り替える" aria-label="モード切替">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px;">
+          <circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5l3 3L22 7l-3-3-3.5 3.5"/>
         </svg>
         <span>モード切替</span>
       </button>
@@ -117,27 +119,35 @@
         <span id="header-role-badge" class="badge badge-role hidden"></span>
         <span id="header-passcode-badge" class="badge badge-accent hidden"></span>
       </div>
-      <button id="btn-logout" class="user-profile" title="ログアウトして入室画面に戻る">
+      <button id="btn-ghost-toggle" class="btn-ghost-toggle hidden" title="ゴーストモードを切り替える">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+        <span>隠密OFF</span>
+      </button>
+      <button id="btn-logout" class="user-profile" title="ログアウトして入室画面に戻る" aria-label="アカウント">
         <span class="user-avatar-icon">👤</span>
         <span id="header-username" class="header-username"></span>
+        <span id="connection-status" class="status-dot status-connecting" title="接続中..."></span>
       </button>
     </div>
   </header>
 
-  <!-- スマホ用タブ -->
+  <!-- スマホ用タブ (レスポンシブ対応) -->
   <div id="mobile-tabs" class="mobile-tabs hidden">
-    <button id="tab-chat" class="tab-btn" data-tab="chat">チャット</button>
+    <button id="tab-chat" class="tab-btn active" data-tab="chat">チャット</button>
     <button id="tab-users" class="tab-btn" data-tab="users">参加者</button>
     <button id="tab-sub" class="tab-btn" data-tab="sub">サブパネル</button>
+    <button id="tab-admin" class="tab-btn hidden" data-tab="admin">サーバー管理</button>
   </div>
 
   <!-- メインエリア -->
   <main class="chat-main">
 
-    <!-- オンラインユーザーサイドバー -->
+    <!-- サイドバー (参加者リスト、ヒント復元) -->
     <aside id="sidebar-users" class="sidebar-users">
       <div class="sidebar-users-header">
-        <span class="sidebar-users-title">オンライン</span>
+        <span class="sidebar-users-title">参加者</span>
         <span id="user-count-badge" class="user-count-badge">0</span>
       </div>
       <ul id="user-list" class="user-list" role="list">
@@ -145,97 +155,93 @@
       </ul>
     </aside>
 
-    <!-- 共通チャットパネル -->
+    <!-- チャットエリア (メッセージルーム) -->
     <section id="panel-main" class="panel panel-chat">
       <div class="panel-header">
         <h2 class="panel-title" id="chat-panel-title">💬 チャット</h2>
         <div class="panel-header-right">
-          <!-- ルーム切替プルダウン -->
+          <!-- ルーム切替プルダウン (アイコン付プレーン) -->
           <select id="room-selector" class="room-select" title="ルーム切替">
             <option value="main">🌐 メインルーム</option>
             <option value="secret">🔒 シークレット</option>
           </select>
-          <span id="connection-status" class="status-dot status-connecting" title="接続中..."></span>
         </div>
       </div>
-      <!-- メインルームメッセージ（通常チャット・面接練習共通） -->
+      <!-- 通常/練習ルーム -->
       <div id="messages" class="messages" role="log" aria-live="polite"></div>
-      <!-- GD練習専用メッセージ（GDモード時に表示） -->
+      <!-- GD練習専用チャット (モード切替で利用) -->
       <div id="gd-messages" class="messages hidden" role="log" aria-live="polite"></div>
-      <!-- シークレットルームメッセージ（切替で表示） -->
+      <!-- シークレットルーム (個人コード用) -->
       <div id="secret-messages" class="messages messages-secret hidden" role="log" aria-live="polite"></div>
     </section>
 
-
-    <!-- サブパネル（面接官専用 or GD共有メモ） -->
+    <!-- サブパネル (隔離構造を完璧に維持したプレミアム版) -->
     <section id="panel-sub" class="panel panel-sub hidden">
 
-      <!-- 面接官専用チャット -->
+      <!-- 面接官専用チャットパネル -->
       <div id="interviewer-panel" class="sub-content hidden">
         <div class="panel-header">
-          <h2 class="panel-title">🔒 面接官専用チャット</h2>
+          <h2 class="panel-title">面接官専用チャット</h2>
           <span class="panel-badge badge-interviewer">面接官のみ</span>
         </div>
         <div id="interviewer-messages" class="messages" role="log"></div>
       </div>
 
-        <!-- GD共有メモ -->
-        <div id="gd-panel" class="sub-content hidden">
-          <div class="panel-header gd-panel-header">
-            <h2 class="panel-title">共有メモ</h2>
+      <!-- GD共有メモパネル (中身のリークを物理的に防止する鉄壁構造) -->
+      <div id="gd-panel" class="sub-content hidden">
+        <div class="panel-header gd-panel-header">
+          <h2 class="panel-title">共有メモ</h2>
+        </div>
+
+        <div class="gd-note">
+          <!-- 編集操作ボタン -->
+          <div id="note-edit-control" class="note-edit-control hidden">
+            <span class="edit-mode-label">編集権限:</span>
+            <button id="btn-toggle-edit-mode" class="btn-sm" title="編集権限（書記のみ/全員）を切り替え">書記のみ</button>
+            <button id="btn-clear-note" class="btn-sm btn-danger" title="すべての共有メモを完全に消去します">共有メモをリセット</button>
           </div>
 
-          <div class="gd-note">
-            <!-- 編集操作ボタン (スクロール内に配置) -->
-            <div id="note-edit-control" class="note-edit-control hidden">
-              <span class="edit-mode-label">編集権限:</span>
-              <button id="btn-toggle-edit-mode" class="btn-sm" title="編集権限を切り替え">書記のみ</button>
-              <button id="btn-clear-note" class="btn-sm btn-danger" title="すべての共有メモを完全に消去します">共有メモをリセット</button>
-            </div>
           <div class="note-field">
             <label class="note-label">テーマ <span class="note-readonly-badge hidden">（読み取り専用）</span></label>
-            <textarea id="note-theme" class="note-textarea" placeholder="ディスカッションのテーマ" rows="2"></textarea>
+            <textarea id="note-theme" class="note-textarea" placeholder="ディスカッションのテーマ・議題" rows="2"></textarea>
           </div>
           <div class="note-field">
             <label class="note-label">前提 <span class="note-readonly-badge hidden">（読み取り専用）</span></label>
-            <textarea id="note-premise" class="note-textarea" placeholder="議論の前提・条件" rows="2"></textarea>
+            <textarea id="note-premise" class="note-textarea" placeholder="議論の前提・定義・条件など" rows="2"></textarea>
           </div>
           <div class="note-field">
             <label class="note-label">発散 <span class="note-readonly-badge hidden">（読み取り専用）</span></label>
-            <textarea id="note-issues" class="note-textarea" placeholder="アイデアを出し合う" rows="3"></textarea>
+            <textarea id="note-issues" class="note-textarea" placeholder="各メンバーから出されたアイデア案" rows="3"></textarea>
           </div>
           <div class="note-field">
             <label class="note-label">収束 <span class="note-readonly-badge hidden">（読み取り専用）</span></label>
-            <textarea id="note-opinions" class="note-textarea" placeholder="アイデアをまとめる" rows="4"></textarea>
+            <textarea id="note-opinions" class="note-textarea" placeholder="アイデアを整理し、合意形成へ向けてまとめ中" rows="4"></textarea>
           </div>
           <div class="note-field">
             <label class="note-label">結論 <span class="note-readonly-badge hidden">（読み取り専用）</span></label>
-            <textarea id="note-conclusion" class="note-textarea" placeholder="グループとしての結論" rows="2"></textarea>
+            <textarea id="note-conclusion" class="note-textarea" placeholder="グループとしての最終的な回答・結論" rows="2"></textarea>
           </div>
           <div class="note-field">
             <label class="note-label">発表用まとめ <span class="note-readonly-badge hidden">（読み取り専用）</span></label>
-            <textarea id="note-summary" class="note-textarea" placeholder="発表用の要約" rows="3"></textarea>
+            <textarea id="note-summary" class="note-textarea" placeholder="発表者が読み上げるための要約" rows="3"></textarea>
           </div>
 
           <hr class="note-sep">
 
           <div class="note-field">
-            <label class="note-label">自分用メモ <span class="note-hint">（他の人には見えません）</span></label>
-            <textarea id="note-private" class="note-textarea note-private" placeholder="自分だけのメモを自由に記入..." rows="5"></textarea>
+            <label class="note-label">自分用メモ <span class="note-hint">（他の参加者には見えません）</span></label>
+            <textarea id="note-private" class="note-textarea note-private" placeholder="自分だけのアイデア出しや個人的なメモに..." rows="5"></textarea>
           </div>
 
-          <!-- タイムキーパー用パネル (タイマー/ストップウォッチ統合) -->
+          <!-- タイムキーパー用パネル (リッチ・レイアウト復元) -->
           <div id="tk-timer-panel" class="hidden">
-            <!-- タイムキーパー用カード (ここから枠有りのデザイン) -->
             <div class="tk-timer-card">
-
-              <!-- モード切替トグル (中に移動) -->
               <div class="tk-mode-switch">
-                <button id="btn-tk-mode-timer" class="tk-mode-btn active">
+                <button id="btn-tk-mode-timer" class="tk-mode-btn active" title="タイマーを使用">
                   タイマー
                   <span id="tk-timer-dot" class="tk-dot-indicator hidden"></span>
                 </button>
-                <button id="btn-tk-mode-sw" class="tk-mode-btn">
+                <button id="btn-tk-mode-sw" class="tk-mode-btn" title="ストップウォッチを使用">
                   ストップウォッチ
                   <span id="tk-sw-dot" class="tk-dot-indicator hidden"></span>
                 </button>
@@ -243,7 +249,6 @@
 
               <!-- タイマーセクション -->
               <div id="tk-timer-section">
-                <!-- 設定画面 -->
                 <div id="tk-timer-setup" class="tk-timer-setup">
                   <div class="tk-timer-display-wrap">
                     <div class="tk-timer-pickers">
@@ -258,19 +263,17 @@
                     </div>
                   </div>
                   <div class="tk-timer-controls">
-                    <button id="btn-tk-timer-cancel-setup" class="btn-tk-round btn-tk-gray" disabled>クリア</button>
-                    <button id="btn-tk-timer-start-setup" class="btn-tk-round btn-tk-green">開始</button>
+                    <button id="btn-tk-timer-cancel-setup" class="btn-tk-round btn-tk-gray" disabled title="設定をクリア">クリア</button>
+                    <button id="btn-tk-timer-start-setup" class="btn-tk-round btn-tk-green" title="タイマーを開始">開始</button>
                   </div>
                 </div>
-
-                <!-- 実行画面 -->
                 <div id="tk-timer-running" class="tk-timer-running hidden">
                   <div class="tk-timer-display-wrap">
                     <div id="tk-timer-display" class="tk-timer-display">00:00</div>
                   </div>
                   <div class="tk-timer-controls">
-                    <button id="btn-tk-timer-cancel" class="btn-tk-round btn-tk-gray">リセット</button>
-                    <button id="btn-tk-timer-pause" class="btn-tk-round btn-tk-orange">一時停止</button>
+                    <button id="btn-tk-timer-cancel" class="btn-tk-round btn-tk-gray" title="計測を停止してリセット">リセット</button>
+                    <button id="btn-tk-timer-pause" class="btn-tk-round btn-tk-orange" title="タイマーを一時停止">一時停止</button>
                   </div>
                 </div>
               </div>
@@ -281,24 +284,24 @@
                   <div id="tk-sw-display" class="tk-timer-display font-mono">00:00</div>
                 </div>
                 <div class="tk-timer-controls">
-                  <button id="btn-tk-sw-reset" class="btn-tk-round btn-tk-gray">リセット</button>
-                  <button id="btn-tk-sw-start" class="btn-tk-round btn-tk-green">開始</button>
+                  <button id="btn-tk-sw-reset" class="btn-tk-round btn-tk-gray" title="経過時間をクリア">リセット</button>
+                  <button id="btn-tk-sw-start" class="btn-tk-round btn-tk-green" title="ストップウォッチを開始">開始</button>
                 </div>
-              </div> <!-- /#tk-sw-section -->
-            </div> <!-- /.tk-timer-card -->
+              </div>
+            </div>
           </div> <!-- /#tk-timer-panel -->
-        </div>
-      </div>
+        </div> <!-- /.gd-note (END) -->
+      </div> <!-- /#gd-panel (END) -->
 
     </section>
 
   </main>
 
-  <!-- 入力エリア -->
+  <!-- 入力エリア (プレミアム・アイコン復元) -->
   <footer class="chat-footer">
     <div class="input-area">
 
-      <!-- サブパネル切替（面接/GDモード用、面接官チャット送信先） -->
+      <!-- サブパネル切替（面接官チャット送信先用） -->
       <div id="input-target-selector" class="input-target-selector hidden">
         <label class="form-label-sm">送信先:</label>
         <div class="target-btns">
@@ -308,29 +311,30 @@
       </div>
 
       <div class="input-row">
-        <button id="btn-image" class="btn-icon" title="画像を送信" aria-label="画像を選択">
+        <!-- 画像ボタン (詳細SVG復元) -->
+        <button id="btn-image" class="btn-icon" title="画像をアップロード（最大30MB、複数枚可）" aria-label="画像を選択">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
-            <polyline points="21 15 16 10 5 21"/>
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
           </svg>
         </button>
-        <input id="file-input" type="file" accept=".jpg,.jpeg,.png,.webp" class="hidden" aria-hidden="true">
+        <input id="file-input" type="file" accept=".jpg,.jpeg,.png,.webp" multiple class="hidden" aria-hidden="true">
 
         <div class="text-input-wrapper">
           <div id="image-preview-area" class="image-preview-area hidden">
-            <img id="image-preview-thumb" class="preview-thumb" src="" alt="プレビュー">
-            <button id="btn-remove-image" class="btn-remove-image" title="画像を削除" aria-label="画像を削除">✕</button>
+            <div id="image-preview-list" class="image-preview-list"></div>
+            <button id="btn-remove-image" class="btn-remove-all" title="選択したすべての画像を削除" aria-label="画像クリア">✕</button>
           </div>
           <textarea
             id="input-message"
             class="textarea-message"
-            placeholder="メッセージを入力..."
+            placeholder="メッセージを入力...（Shift+Enterで送信）"
             rows="1"
             maxlength="1000"
           ></textarea>
         </div>
 
-        <button id="btn-send" class="btn-send" disabled title="送信" aria-label="送信">
+        <!-- 送信ボタン (力強いSVG復元) -->
+        <button id="btn-send" class="btn-send" disabled title="メッセージを送信" aria-label="送信">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
           </svg>
@@ -341,8 +345,8 @@
 </div>
 
 <!-- ═══════════════════════════════════════════
-     DMパネル（フローティング）
-═══════════════════════════════════════════ -->
+     DMパネル (フローティング)
+     ═══════════════════════════════════════════ -->
 <div id="dm-overlay" class="dm-overlay hidden" role="dialog" aria-modal="true" aria-label="プライベートメッセージ">
   <div class="dm-panel-header">
     <div class="dm-panel-title-wrap">
@@ -357,22 +361,21 @@
   <div id="dm-messages" class="messages dm-messages" role="log" aria-live="polite"></div>
   <div class="dm-footer">
     <!-- DM画像プレビュー -->
-    <div id="dm-image-preview-area" class="dm-image-preview-area hidden">
-      <img id="dm-image-preview-thumb" class="preview-thumb" src="" alt="プレビュー">
-      <button id="btn-dm-remove-image" class="btn-remove-image" title="画像を削除" aria-label="画像を削除">✕</button>
+    <div id="dm-image-preview-area" class="image-preview-area hidden">
+      <div id="dm-image-preview-list" class="image-preview-list"></div>
+      <button id="btn-dm-remove-image" class="btn-remove-all" title="すべて削除" aria-label="クリア">✕</button>
     </div>
     <div class="dm-footer-row">
       <button id="btn-dm-image" class="btn-icon" title="画像を送信" aria-label="画像を選択" style="width:36px;height:36px;min-width:36px;">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
-          <polyline points="21 15 16 10 5 21"/>
+          <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
         </svg>
       </button>
-      <input id="dm-file-input" type="file" accept=".jpg,.jpeg,.png,.webp" class="hidden" aria-hidden="true">
+      <input id="dm-file-input" type="file" accept=".jpg,.jpeg,.png,.webp" multiple class="hidden" aria-hidden="true">
       <textarea
         id="dm-input"
         class="dm-textarea"
-        placeholder="プライベートメッセージを入力..."
+        placeholder="DMを送信..."
         rows="1"
         maxlength="1000"
       ></textarea>
@@ -386,8 +389,8 @@
 </div>
 
 <!-- ═══════════════════════════════════════════
-     モード切替パネル
-═══════════════════════════════════════════ -->
+     モード切替パネル (詳細説明復元)
+     ═══════════════════════════════════════════ -->
 <div id="mode-switch-overlay" class="mode-switch-overlay hidden" role="dialog" aria-modal="true" aria-label="モード切替">
   <div class="mode-switch-backdrop" id="mode-switch-backdrop"></div>
   <div class="mode-switch-panel">
@@ -408,13 +411,13 @@
         <span class="mode-desc">面接を模擬練習</span>
       </label>
       <label class="mode-card" id="sw-mode-card-gd">
-        <input type="radio" name="sw-mode" value="gd" id="sw-radio-gd">
+        <input type="radio" name="sw-mode" value="GroupDiscussion" id="sw-radio-gd">
         <span class="mode-name">GD練習</span>
         <span class="mode-desc">グループディスカッション</span>
       </label>
     </div>
 
-    <!-- 部屋コード (個人間やり取り用) -->
+    <!-- 部屋コード (詳細ヒント復元) -->
     <div id="sw-passcode-group" class="form-group">
       <label for="sw-input-passcode" class="form-label">部屋コード <span class="form-label-hint">（任意）</span></label>
       <input
@@ -425,7 +428,7 @@
         maxlength="20"
         autocomplete="off"
       >
-      <span class="form-hint" style="margin-top: 4px; display: block;">面接・GD練習を別室で分ける場合に入力してください。<br><span style="color:var(--accent-hover)">💾 保存期間: 14日／100件</span></span>
+      <span class="form-hint" style="margin-top: 4px; display: block;">別室として隔離する場合に入力してください。<br><span style="color:var(--accent-hover)">💾 保存期間: 14日／100件</span></span>
     </div>
 
     <div id="sw-role-group" class="form-group hidden">
@@ -433,16 +436,14 @@
       <select id="sw-select-role" class="form-select"></select>
     </div>
 
-    <button id="btn-apply-mode" class="btn-primary" style="margin-top:4px">
-      <span>適用する</span>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    <button id="btn-apply-mode" class="btn-primary" style="margin-top:12px">
+      <span>適用して移動する</span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
     </button>
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════
-     画像拡大モーダル
-═══════════════════════════════════════════ -->
+<!-- 画像拡大モーダル (フル復元) -->
 <div id="image-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="画像拡大表示">
   <div class="modal-overlay" id="modal-overlay"></div>
   <div class="modal-content">
@@ -451,17 +452,78 @@
   </div>
 </div>
 
-<!-- 接続失敗通知 -->
+<!-- 通知系 (復元済) -->
 <div id="reconnect-toast" class="toast hidden">
-  <span>接続が切れました。再接続を試みています...</span>
+  <span>ネットワーク接続が不安定です。再接続中...</span>
 </div>
-
-<!-- DM/システム通知用バナー -->
 <div id="toast-container" class="toast-container"></div>
 
+<!-- ルーム移動機能への移行により覗き見モーダルは廃止 -->
 
 
-<script src="/static/app.js?v=5"></script>
+<!-- ═══════════════════════════════════════════
+     サーバー管理パネル (Sidebar用追加)
+     ═══════════════════════════════════════════ -->
+<template id="tpl-admin-panel">
+  <aside id="admin-panel" class="sidebar-admin active-mobile-panel hidden">
+    <div class="sidebar-header" style="display:flex; justify-content:flex-start; align-items:center; gap:8px;">
+      <h3 class="sidebar-title" style="margin:0;">サーバー管理</h3>
+      <button id="btn-admin-refresh" class="btn-refresh" aria-label="手動更新" style="background:transparent; border:none; cursor:pointer; font-size:16px;" title="最新状態に更新">🔄</button>
+    </div>
+    <div class="admin-room-list-wrap">
+      <ul id="admin-room-list" class="admin-room-list">
+        <!-- 部屋一覧がここに動的に生成される -->
+      </ul>
+    </div>
+    <div class="admin-broadcast-section">
+      <h4 class="admin-sub-title">📢 サーバー全体一斉通知</h4>
+      <textarea id="admin-broadcast-msg" placeholder="全ユーザーへ送るメッセージを入力..." class="admin-broadcast-textarea"></textarea>
+      <button id="btn-admin-broadcast" class="btn-admin-broadcast-send">一斉送信</button>
+    </div>
+  </aside>
+</template>
+
+<!-- ── モーダル・オーバーレイ ────────────────────────────────────── -->
+
+<!-- ログアウト確認モーダル -->
+<div id="logout-confirm-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="ログアウト確認">
+  <div class="modal-overlay" id="logout-modal-overlay"></div>
+  <div class="modal-content logout-confirm-content">
+    <div class="logout-confirm-body">
+      <p class="logout-confirm-text">ログアウトして入室画面に戻りますか？</p>
+    </div>
+    <div class="logout-confirm-footer">
+      <button id="btn-logout-cancel" class="btn-logout-dialog btn-logout-cancel">キャンセル</button>
+      <button id="btn-logout-ok" class="btn-logout-dialog btn-logout-ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- 汎用アラートモーダル -->
+<div id="alert-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="アラート">
+  <div class="modal-overlay" id="alert-modal-overlay"></div>
+  <div class="modal-content alert-modal-content">
+    <div class="alert-modal-body">
+      <p id="alert-modal-message" class="alert-modal-text">メッセージが入ります</p>
+    </div>
+    <div class="alert-modal-footer">
+      <button id="btn-alert-ok" class="btn-alert-dialog">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- 管理者用：キック通知（ブラックアウト） -->
+<div id="kick-overlay" class="kick-overlay hidden">
+  <div class="kick-card">
+    <div class="kick-icon"></div>
+    <h2 class="kick-title">強制退出</h2>
+    <p id="kick-message" class="kick-desc">管理者に強制退出させられました</p>
+    <button onclick="location.reload()" class="btn-kick-ok">ホームに戻る</button>
+  </div>
+</div>
+
+<!-- メインプログラムの読み込み（要素の後に置くことでDOM認識を確実にする） -->
+<script src="/static/app.js?v=202"></script>
 
 </body>
 </html>
