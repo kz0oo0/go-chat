@@ -111,8 +111,11 @@ const el = {
   btnRemoveImage: $('btn-remove-image'),
   btnSend:        $('btn-send'),
 
-  // ルーム切替
-  roomSelector:  $('room-selector'),
+  // ルーム切替 (カスタムドロップダウン)
+  roomDropdown:   $('room-dropdown'),
+  dropdownTrigger: $('room-dropdown-trigger'),
+  dropdownMenu:    $('room-dropdown-menu'),
+  selectedRoomLabel: $('selected-room-label'),
   secretMessages: $('secret-messages'),
   gdMessages:    $('gd-messages'),
   chatPanelTitle: $('chat-panel-title'),
@@ -519,9 +522,11 @@ function switchTab(tab) {
   const isMobile = window.innerWidth <= 768;
   if (!isMobile) return;
 
-  state.activeTab = tab; // 追加: アクティブなタブを保存
-  saveLoginState();      // 追加
+  console.log(`[Tab] Switching to: ${tab}`);
+  state.activeTab = tab;
+  saveLoginState();
 
+  // タブボタンの状態更新
   el.tabChat.classList.toggle('active', tab === 'chat');
   el.tabUsers.classList.toggle('active', tab === 'users');
   el.tabSub.classList.toggle('active',  tab === 'sub');
@@ -529,71 +534,75 @@ function switchTab(tab) {
     el.tabAdmin.classList.toggle('active', tab === 'admin');
   }
 
-  // 【超強力ロジック】すべてのパネル（チャット、ユーザー、サブ、管理者）を一旦完全に消去
-  const allPanels = [
-    el.panelMain, 
-    el.sidebarUsers, 
-    el.panelSub, 
-    document.querySelector('.sidebar-admin'),
-    $('admin-panel')
+  // 全パネルを一旦完全に非表示にする
+  const panels = [
+    { el: el.panelMain, name: 'chat' },
+    { el: el.sidebarUsers, name: 'users' },
+    { el: el.panelSub, name: 'sub' },
+    { el: $( 'admin-panel' ), name: 'admin' }
   ];
   
-  allPanels.forEach(p => {
-    if (p) {
-      p.style.display = 'none';
-      p.classList.remove('active');
-      p.classList.add('hidden');
+  panels.forEach(p => {
+    if (p.el) {
+      p.el.style.display = 'none';
+      p.el.classList.add('hidden');
+      p.el.classList.remove('active', 'active-mobile-panel');
     }
   });
 
-  // 表示の切り替え
+  // フッター（チャット入力欄）の制御：チャットタブ以外では完全に隠す
+  if (tab === 'chat') {
+    el.chatFooter.classList.remove('hidden');
+    el.chatFooter.style.display = 'block';
+  } else {
+    el.chatFooter.classList.add('hidden');
+    el.chatFooter.style.display = 'none';
+  }
+
+  // 選択されたタブに応じた表示
   if (tab === 'chat') {
     el.panelMain.style.display = 'flex';
     el.panelMain.classList.remove('hidden');
-    el.chatFooter.classList.remove('hidden');
+    el.panelMain.classList.add('active-mobile-panel');
     setSendTarget('main');
   } else if (tab === 'users') {
     el.sidebarUsers.style.display = 'flex';
-    el.sidebarUsers.classList.add('active');
     el.sidebarUsers.classList.remove('hidden');
-    el.chatFooter.classList.add('hidden');
+    el.sidebarUsers.classList.add('active', 'active-mobile-panel');
   } else if (tab === 'admin') {
-    const ap = document.querySelector('.sidebar-admin') || $('admin-panel');
-    if (ap) {
-      ap.style.display = 'flex';
-      ap.classList.remove('hidden');
-      ap.style.width = '100%';
+    const adminPanel = $('admin-panel');
+    if (adminPanel) {
+      adminPanel.style.display = 'flex';
+      adminPanel.classList.remove('hidden');
+      adminPanel.classList.add('active-mobile-panel');
+      sendWsMessage({ type: 'admin_get_rooms' });
     }
-    el.chatFooter.classList.add('hidden');
-    sendWsMessage({ type: 'admin_get_rooms' });
-  } else {
-    // サブタブ ('sub')
-    el.panelSub.style.display = 'flex';
+  } else if (tab === 'sub') {
+    el.panelSub.style.display = 'flex'; // flexに変更して中身の縦並びを維持
     el.panelSub.classList.remove('hidden');
-    el.chatFooter.classList.remove('hidden');
+    el.panelSub.classList.add('active-mobile-panel');
 
+    // 面接モードの場合は送信先を自動でサブ（面接官チャット）に切り替える
     if (state.mode === 'interview' && (state.role === 'interviewer' || state.isAdmin)) {
       setSendTarget('sub');
     }
     
+    // サブパネル内のコンテンツ出し分け
     const isGD = state.mode === 'GroupDiscussion';
     const isInterview = state.mode === 'interview';
     
     if (el.interviewerPanel) {
-      el.interviewerPanel.classList.toggle('hidden', !isInterview);
       el.interviewerPanel.style.display = isInterview ? 'flex' : 'none';
+      el.interviewerPanel.classList.toggle('hidden', !isInterview);
     }
     if (el.gdPanel) {
-      el.gdPanel.classList.toggle('hidden', !isGD);
       el.gdPanel.style.display = isGD ? 'flex' : 'none';
-    }
-    
-    if (isGD) {
-      el.chatFooter.classList.add('hidden');
-    } else {
-      el.chatFooter.classList.remove('hidden');
+      el.gdPanel.classList.toggle('hidden', !isGD);
     }
   }
+
+  // スクロール位置のトップリセット（切り替え時の違和感解消）
+  window.scrollTo(0, 0);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -763,9 +772,9 @@ function handleMessage(msg) {
     const cleanMsg = msg.content.replace('[全体通知] ', '');
     showToast(cleanMsg, '⚙ システム');
     
-    // 全てのコンテナ（通常、GD、面接管）にログを追加して見落としを防ぐ
-    if (el.messages) appendSystemMessage(msg.content, el.messages);
-    if (el.gdMessages) appendSystemMessage(msg.content, el.gdMessages);
+    // 現在アクティブなコンテナにのみ追加（重複表示を防ぐ）
+    const activeContainer = state.mode === 'GroupDiscussion' ? el.gdMessages : el.messages;
+    if (activeContainer) appendSystemMessage(msg.content, activeContainer);
     return; // 以降の通常処理（モード判定等）を行わずに終了
   }
 
@@ -1865,10 +1874,34 @@ async function uploadAndSendDmImage(captionText) {
    ルーム切替（メイン ↔ シークレット）
 ═══════════════════════════════════════════════════════════ */
 
-el.roomSelector.addEventListener('change', () => {
-  switchRoom(el.roomSelector.value);
-  saveLoginState();
-});
+  // カスタムドロップダウンのイベント設定
+  if (el.dropdownTrigger) {
+    el.dropdownTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      el.roomDropdown.classList.toggle('open');
+      el.dropdownMenu.classList.toggle('hidden');
+    });
+  }
+
+  // 項目選択
+  document.querySelectorAll('.dropdown-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const room = item.getAttribute('data-value');
+      switchRoom(room);
+      saveLoginState();
+      
+      // メニューを閉じる
+      el.roomDropdown.classList.remove('open');
+      el.dropdownMenu.classList.add('hidden');
+    });
+  });
+
+  // 画面外クリックで閉じる
+  document.addEventListener('click', () => {
+    el.roomDropdown?.classList.remove('open');
+    el.dropdownMenu?.classList.add('hidden');
+  });
+
 
 /** ルームを切替える */
 function switchRoom(room) {
@@ -1878,9 +1911,8 @@ function switchRoom(room) {
     el.messages.classList.add('hidden');
     el.gdMessages.classList.add('hidden'); // GD用も消す
     el.secretMessages.classList.remove('hidden');
-    el.chatPanelTitle.textContent = '🔒 シークレット';
+    el.chatPanelTitle.textContent = '🔒 シークレットルーム';
     el.inputMessage.placeholder = 'シークレットルームへ送信...';
-    el.roomSelector.classList.add('is-secret');
     clearSecretUnread();
   } else {
     el.secretMessages.classList.add('hidden');
@@ -1890,26 +1922,43 @@ function switchRoom(room) {
     } else {
       el.messages.classList.remove('hidden');
     }
-    el.chatPanelTitle.textContent = '💬 チャット';
+    el.chatPanelTitle.textContent = '💬 メインルーム';
     el.inputMessage.placeholder = 'メッセージを入力...';
-    el.roomSelector.classList.remove('is-secret');
   }
 
-  scrollToBottom(room === 'secret' ? el.secretMessages : (state.mode === 'gd' ? el.gdMessages : el.messages));
+  // ドロップダウンの表示更新
+  const label = room === 'secret' ? '🔒 シークレットルーム' : '🌐 メインルーム';
+  if (el.selectedRoomLabel) el.selectedRoomLabel.textContent = label;
+  
+  document.querySelectorAll('.dropdown-item').forEach(item => {
+    item.classList.toggle('active', item.getAttribute('data-value') === room);
+  });
+
+  scrollToBottom(room === 'secret' ? el.secretMessages : (state.mode === 'GroupDiscussion' ? el.gdMessages : el.messages));
 }
 
 /** シークレットルームの未読インジケーターを表示 */
 function markSecretUnread() {
-  const opt = el.roomSelector.querySelector('option[value="secret"]');
-  if (opt && !opt.textContent.includes('●')) {
-    opt.textContent = '🔒 シークレット ●';
+  // リスト内の項目にドットを追加
+  const item = $('dropdown-item-secret');
+  if (item && !item.querySelector('.unread-dot-badge')) {
+    const dot = document.createElement('span');
+    dot.className = 'unread-dot-badge';
+    item.appendChild(dot);
+  }
+  // 親ボタンにも小さくドットを表示（もし選択中でなければ）
+  if (state.currentRoom !== 'secret' && el.dropdownTrigger && !el.dropdownTrigger.querySelector('.unread-dot-badge')) {
+    const dot = document.createElement('span');
+    dot.className = 'unread-dot-badge';
+    dot.style.marginLeft = '4px';
+    el.dropdownTrigger.appendChild(dot);
   }
 }
 
 /** 未読インジケーターをクリア */
 function clearSecretUnread() {
-  const opt = el.roomSelector.querySelector('option[value="secret"]');
-  if (opt) opt.textContent = '🔒 シークレット';
+  $('dropdown-item-secret')?.querySelector('.unread-dot-badge')?.remove();
+  el.dropdownTrigger?.querySelectorAll('.unread-dot-badge').forEach(d => d.remove());
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1972,7 +2021,6 @@ function loadLoginState() {
           if (!state.username) joinChat(true);
           
           if (state.currentRoom) {
-            el.roomSelector.value = state.currentRoom;
             switchRoom(state.currentRoom);
           }
           if (state.activeTab && window.innerWidth <= 768) {
@@ -2400,6 +2448,13 @@ function setupAdminUI() {
           sendWsMessage({ type: 'admin_get_rooms' });
         });
       }
+
+      // 管理者パネル内のルームリセットボタン
+      const btnAdminRoomReset = $('btn-admin-room-reset');
+      if (btnAdminRoomReset && !btnAdminRoomReset.hasAttribute('data-bound')) {
+        btnAdminRoomReset.setAttribute('data-bound', 'true');
+        btnAdminRoomReset.addEventListener('click', adminRoomReset);
+      }
     }
 
     // 各 welcome (昇格/降格/同期) ごとに最新の部屋リストを要求する
@@ -2616,22 +2671,10 @@ window.kickUser = function(target) {
   sendWsMessage({ type: 'kick', content: target });
 };
 
-/** ユーザーの名前を変更 (グローバル) */
+  // ユーザーの名前を変更 (グローバル)
 window.renameUser = function(target) {
   const newName = prompt(`${target} さんの新しい名前を入力してください:`, target);
   if (!newName || newName === target) return;
   sendWsMessage({ type: 'rename_user', username: target, content: newName });
-};
-
-/** 覗き見モーダル関連のリスナー削除（不要） */
-
-/** タブ切り替えロジックに管理者タブを追加 */
-const originalSwitchTab = typeof switchTab !== 'undefined' ? switchTab : null;
-window.switchTab = function(tabId) {
-  if (originalSwitchTab) originalSwitchTab(tabId);
-  if (el.adminPanel) el.adminPanel.classList.toggle('hidden', tabId !== 'admin');
-  if (tabId === 'admin') {
-    sendWsMessage({ type: 'admin_get_rooms' });
-  }
 };
 

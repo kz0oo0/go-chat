@@ -20,9 +20,9 @@
   --accent-dim:      rgba(139, 92, 246, 0.2);
   --accent-dimmer:   rgba(139, 92, 246, 0.08);
 
-  --text-primary:    #f8fafc;
-  --text-secondary:  #94a3b8;
-  --text-muted:      #64748b;
+  --text-primary:    #ffffff;
+  --text-secondary:  #e2e8f0;
+  --text-muted:      #94a3b8;
 
   --my-bubble-bg:    linear-gradient(135deg, #8b5cf6, #6366f1);
   --my-bubble-text:  #ffffff;
@@ -61,7 +61,9 @@ html, body {
   height: 100%;
   font-family: 'Outfit', 'Inter', -apple-system, sans-serif;
   font-size: 15px;
+  font-weight: 500;
   line-height: 1.6;
+  letter-spacing: 0.1px;
   background: 
     radial-gradient(at 0% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%),
     radial-gradient(at 100% 100%, rgba(99, 102, 241, 0.1) 0px, transparent 50%),
@@ -99,15 +101,15 @@ html, body {
   margin-top: auto;
   margin-bottom: auto;
   flex-shrink: 0;
-  background: var(--bg-glass);
+  background: rgba(15, 15, 25, 0.95); /* 視認性向上のため不透明度を大幅にアップ */
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--border);
+  border: 1.5px solid rgba(255, 255, 255, 0.15); /* 境界線を強調 */
   border-radius: var(--radius-xl);
   padding: 48px 40px;
   width: 100%;
   max-width: 480px;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.6); /* 影をより深く */
   animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -146,35 +148,36 @@ html, body {
 
 .form-label {
   font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  letter-spacing: 0.5px;
+  font-weight: 700; /* さらに太く */
+  color: var(--text-primary); /* より明るく */
+  letter-spacing: 0.8px;
   text-transform: uppercase;
 }
 
 .form-input, .form-select {
-  background: var(--bg-input);
-  border: 1.5px solid var(--border);
+  background: rgba(0, 0, 0, 0.4); /* より濃い背景でテキストを際立たせる */
+  border: 2px solid var(--border-light); /* 境界線を太く */
   border-radius: var(--radius-md);
   color: var(--text-primary);
   font-size: 15px;
   font-family: inherit;
-  padding: 12px 16px;
-  transition: border-color var(--transition), box-shadow var(--transition);
+  padding: 14px 16px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   outline: none;
   width: 100%;
 }
 
 .form-input:focus, .form-select:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-dim);
+  background: rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 4px var(--accent-dim); /* フォーカスをより際立たせる */
 }
 
-.form-input::placeholder { color: var(--text-muted); }
+.form-input::placeholder { color: var(--text-secondary); } /* プレースホルダーを少し濃く */
 .form-select { cursor: pointer; appearance: none; }
 .form-select option {
-  background-color: #1e1e2e; /* ダークモードに合わせた濃い背景 */
-  color: var(--text-primary);
+  background-color: #ffffff; /* ライト背景を想定 */
+  color: #000000; /* 文字を黒に固定して確実に読めるようにする */
 }
 
 .form-error {
@@ -209,16 +212,16 @@ html, body {
 
 .mode-card {
   position: relative;
-  background: var(--bg-input);
-  border: 1.5px solid var(--border);
+  background: rgba(255, 255, 255, 0.08); /* 背景を少し濃く */
+  border: 2px solid var(--border-light); /* 境界線を太く */
   border-radius: var(--radius-md);
-  padding: 14px 10px;
+  padding: 18px 10px; /* パディングを拡大 */
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   cursor: pointer;
-  transition: border-color var(--transition), background var(--transition), transform var(--transition);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   text-align: center;
 }
 
@@ -231,21 +234,21 @@ html, body {
 
 .mode-card:hover {
   border-color: var(--accent);
-  background: var(--accent-dimmer);
-  transform: translateY(-1px);
+  background: var(--accent-dim);
+  transform: translateY(-2px);
 }
 
 .mode-card:has(input:checked) {
   border-color: var(--accent);
   background: var(--accent-dim);
-  box-shadow: 0 0 0 1px var(--accent);
+  box-shadow: 0 0 0 2px var(--accent), 0 8px 24px rgba(139, 92, 246, 0.3); /* 選択状態を強力に強調 */
 }
 
-.mode-icon { font-size: 24px; }
+.mode-icon { font-size: 32px; } /* アイコンを拡大 */
 
 .mode-name {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px; /* 文字を少し大きく */
+  font-weight: 700; /* 文字を太く */
   color: var(--text-primary);
 }
 
@@ -346,9 +349,42 @@ html, body {
   white-space: nowrap;
 }
 
-@media (max-width: 480px) {
-  .header-username { max-width: 100px; }
-  .header-app-name { display: none; } /* 極小画面ではロゴのみに */
+@media (max-width: 768px) {
+  .chat-header {
+    padding: 0 12px;
+    height: 56px;
+    min-height: 56px;
+  }
+  .header-app-name {
+    display: none;
+  }
+  .header-right {
+    gap: 4px;
+    flex: 1;
+    justify-content: flex-end;
+  }
+  .header-username {
+    max-width: 80px;
+    font-size: 11px;
+  }
+  .btn-switch-mode span, .btn-ghost-toggle span {
+    display: none;
+  }
+  .btn-switch-mode, .btn-ghost-toggle, .user-profile {
+    padding: 6px;
+    min-width: 36px;
+    height: 36px;
+    justify-content: center;
+    border-radius: 10px;
+  }
+  .header-badges {
+    display: flex;
+    gap: 2px;
+  }
+  .badge {
+    padding: 2px 6px;
+    font-size: 9px;
+  }
 }
 
 /* ── バッジ ───────────────────────────────────────────────── */
@@ -451,20 +487,55 @@ html, body {
   .sidebar-users {
     display: none;
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100% !important; /* 全画面表示に */
+    inset: 0;
+    width: 100% !important;
     height: 100%;
-    z-index: 200;
-    background: #121214 !important; /* 透過をやめる */
+    z-index: 100;
+    background: var(--bg-primary) !important;
     opacity: 1 !important;
   }
   .sidebar-users.active {
     display: flex;
   }
   .sidebar-users-header {
-    background: #1c1c1e; /* 不透明 */
+    background: var(--bg-glass-heavy);
     padding: 16px 20px;
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* モバイルタブの横スクロール対応 */
+  .mobile-tabs {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    background: var(--bg-glass-heavy);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 4px;
+    height: 48px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    flex-shrink: 0;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mobile-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .tab-btn {
+    flex: 0 0 auto !important;
+    min-width: 100px; /* 少し広げて押しやすく */
+    padding: 0 12px;
+    font-size: 13px;
+    white-space: nowrap;
+    height: 100%;
+    border-bottom: 2px solid transparent;
+  }
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: var(--accent-dimmer);
   }
 }
 
@@ -600,6 +671,26 @@ html, body {
   background: rgba(124, 106, 255, 0.05);
 }
 
+/* パネルコンテナのモバイル制御 */
+@media (max-width: 768px) {
+  .panel-sub {
+    width: 100% !important;
+    position: absolute;
+    inset: 0;
+    z-index: 90;
+    background: var(--bg-primary);
+    display: none; /* JSで制御 */
+  }
+  .panel-chat {
+    width: 100%;
+    flex: 1;
+  }
+  .chat-main {
+    position: relative;
+    overflow: hidden;
+  }
+}
+
 /* ── メインエリア ─────────────────────────────────────────── */
 .chat-main {
   display: flex;
@@ -646,47 +737,95 @@ html, body {
   gap: 10px;
 }
 
-/* ルーム切替プルダウン */
-.room-select {
+/* カスタムドロップダウン (ルーム切替) */
+.custom-dropdown {
+  position: relative;
+  min-width: 140px;
+}
+
+.dropdown-trigger {
+  width: 100%;
   background: var(--bg-input);
-  border: 1.5px solid var(--border);
+  border: 1.5px solid var(--border-light);
   border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 4px 10px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   cursor: pointer;
+  transition: all var(--transition);
   outline: none;
-  transition: border-color var(--transition), box-shadow var(--transition);
-  appearance: none;
-  -webkit-appearance: none;
-  /* 矢印アイコン */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-  padding-right: 26px;
 }
 
-.room-select:hover {
+.dropdown-trigger:hover {
   border-color: var(--accent);
-  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
-.room-select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-dim);
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 100%;
+  min-width: 160px;
+  background: #1a1a2e; /* 確実に視認できる濃い背景色 */
+  border: 1.5px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  list-style: none;
+  padding: 4px;
+  z-index: 2100; /* ヘッダーやモーダルの上に表示 */
+  transform-origin: top right;
+  animation: dropdownIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.room-select option {
-  background-color: #1e1e2e;
-  color: var(--text-primary);
+@keyframes dropdownIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 
-/* シークレットルーム選択中はボーダーを緑に */
-.room-select.is-secret {
-  border-color: rgba(16, 185, 129, 0.6);
-  color: #10b981;
+.dropdown-item {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff !important; /* 文字を白に固定して確実に読めるようにする */
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.1s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dropdown-item:hover {
+  background: var(--accent);
+  color: #fff !important;
+}
+
+.dropdown-item.active {
+  background: var(--accent-dim);
+  color: var(--accent) !important;
+}
+
+.dropdown-arrow {
+  transition: transform 0.2s ease;
+}
+
+.custom-dropdown.open .dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+/* シークレットルームの未読ドット（ドロップダウン用） */
+.unread-dot-badge {
+  width: 8px;
+  height: 8px;
+  background: #ff453a;
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(255, 69, 58, 0.5);
 }
 
 /* シークレットルームのメッセージエリア */
@@ -1206,7 +1345,7 @@ html, body {
 .modal {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 2000 !important; /* 管理者パネル(500)より前面に */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1333,15 +1472,14 @@ html, body {
 
   .panel-sub {
     position: absolute;
-    top: 112px;
+    top: 0 !important;
     left: 0;
     right: 0;
     bottom: 0;
     width: 100% !important;
     background: var(--bg-secondary);
     z-index: 5;
-    height: calc(100% - 112px);
-    padding-bottom: 74px;
+    height: 100% !important;
     display: none; /* 初期状態は非表示（モバイルタブで制御） */
     overflow-y: auto;
   }
@@ -1366,7 +1504,8 @@ html, body {
     background: transparent !important;
   }
   
-  #gd-panel .panel-title {
+  #gd-panel .panel-title,
+  .panel-sub .panel-header {
     display: none !important;
   }
 
@@ -1476,7 +1615,7 @@ html, body {
 .mode-switch-overlay {
   position: fixed;
   inset: 0;
-  z-index: 300;
+  z-index: 1000;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1926,10 +2065,10 @@ html, body {
     max-width: 100% !important;
     border-right: none;
     background: var(--bg-surface);
-    height: calc(100dvh - 114px);
+    height: 100% !important;
     overflow-y: auto;
     position: absolute;
-    top: 112px;
+    top: 0 !important;
     z-index: 10;
   }
   .panel-sub {
@@ -1939,11 +2078,11 @@ html, body {
     max-width: 100% !important;
     border-left: none;
     position: absolute;
-    top: 112px !important;
+    top: 0 !important;
     left: 0;
     right: 0;
     bottom: 0;
-    height: calc(100% - 112px) !important;
+    height: 100% !important;
     background: var(--bg-secondary);
     z-index: 20;
     overflow-y: auto;
@@ -2560,13 +2699,12 @@ html, body {
     position: absolute;
     inset: 0;
     width: 100% !important; /* 全画面表示に */
-    height: 100%;
+    height: 100% !important;
     z-index: 500;
     border-left: none;
     background: #121214 !important; /* 透過をやめて完全に塗りつぶす */
     opacity: 1 !important;
-    padding-bottom: 90px;
-    overflow-y: auto;
+    padding-bottom: 0px !important;
   }
 }
 

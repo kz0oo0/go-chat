@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=13">
+  <link rel="stylesheet" href="/static/style.css?v=14">
 </head>
 <body>
 
@@ -160,11 +160,17 @@
       <div class="panel-header">
         <h2 class="panel-title" id="chat-panel-title">💬 チャット</h2>
         <div class="panel-header-right">
-          <!-- ルーム切替プルダウン (アイコン付プレーン) -->
-          <select id="room-selector" class="room-select" title="ルーム切替">
-            <option value="main">🌐 メインルーム</option>
-            <option value="secret">🔒 シークレット</option>
-          </select>
+          <!-- カスタムドロップダウン (視認性改善版) -->
+          <div id="room-dropdown" class="custom-dropdown">
+            <button id="room-dropdown-trigger" class="dropdown-trigger">
+              <span id="selected-room-label">🌐 メインルーム</span>
+              <svg class="dropdown-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <ul id="room-dropdown-menu" class="dropdown-menu hidden">
+              <li data-value="main" class="dropdown-item">🌐 メインルーム</li>
+              <li data-value="secret" class="dropdown-item" id="dropdown-item-secret">🔒 シークレットルーム</li>
+            </ul>
+          </div>
         </div>
       </div>
       <!-- 通常/練習ルーム -->
@@ -479,6 +485,8 @@
       <h4 class="admin-sub-title">📢 サーバー全体一斉通知</h4>
       <textarea id="admin-broadcast-msg" placeholder="全ユーザーへ送るメッセージを入力..." class="admin-broadcast-textarea"></textarea>
       <button id="btn-admin-broadcast" class="btn-admin-broadcast-send">一斉送信</button>
+      
+
     </div>
   </aside>
 </template>
