@@ -356,7 +356,8 @@ html, body {
     min-height: 56px;
   }
   .header-app-name {
-    display: none;
+    font-size: 14px;
+    /* display: none を削除してスマホでも表示 */
   }
   .header-right {
     gap: 4px;

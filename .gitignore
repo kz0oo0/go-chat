@@ -1,6 +1,7 @@
 # Binaries
 bin/
 gochat
+*.exe
 
 # Local database and uploaded data
 # (If you want to keep your project clean for others, ignore the data folder)
@@ -14,3 +15,5 @@ chat.db
 # System files
 .DS_Store
 Thumbs.db
+update.tar.gz
+update.zip

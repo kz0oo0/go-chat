@@ -2316,9 +2316,17 @@ function logout() {
 /** 実際のログアウト処理を実行 */
 function executeLogout() {
   localStorage.removeItem('gochat_auth');
+  state.isLoggedIn = false;
+  state.username = '';
+
   if (state.ws && state.isConnected) {
     sendWsMessage({ type: 'logout' });
-    setTimeout(() => location.reload(), 300);
+    // websocketがサーバー側から切断されたタイミング（＝サーバーが確実にログアウト処理を終えたタイミング）でリロードする
+    state.ws.onclose = () => {
+      location.reload();
+    };
+    // サーバーからの切断が遅い、または届かない場合のフォールバック
+    setTimeout(() => location.reload(), 1000);
   } else {
     location.reload();
   }
@@ -2630,7 +2638,7 @@ function renderAdminRoomList(rooms) {
         </div>
       </div>
       <div class="admin-room-actions">
-        <button class="btn-admin-action btn-admin-join" onclick="window.adminJoinRoom('${escHtml(r.username)}'); event.stopPropagation();">移動</button>
+        <button class="btn-admin-action btn-admin-join" onclick="window.adminJoinRoom('${escHtml(r.username)}', '${r.mode}'); event.stopPropagation();">移動</button>
         <button class="btn-admin-action btn-admin-delete" onclick="window.adminDeleteRoom('${escHtml(r.username)}'); event.stopPropagation();">消去</button>
       </div>
     `;
@@ -2640,11 +2648,19 @@ function renderAdminRoomList(rooms) {
 
 /** 管理者：指定の部屋へ直接移動（入室） */
 // 管理者ルームジャンプ機能 (windowスコープへ公開)
-window.adminJoinRoom = function(passcode) {
+window.adminJoinRoom = function(passcode, modeStr) {
+  let targetPass = passcode;
+  // 送信先のモードが通常（chat）以外の場合は、確実にモードが切り替わるようにプレフィックスを付ける
+  if (modeStr && modeStr !== 'chat' && modeStr !== 'undefined') {
+    targetPass = modeStr + '|' + targetPass;
+  }
+
   sendWsMessage({
     type: 'admin_join_room',
-    passcode: passcode
+    passcode: targetPass
   });
+  
+  // NOTE: 管理者パネルを開いたままにするため、タブの切り替えやパネル非表示処理は行いません。
 };
 
 /** 部屋を消去 */
