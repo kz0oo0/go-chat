@@ -860,17 +860,13 @@ func handleAdminAction(h *Hub, c *Client, msg Message) {
 		c.send <- []byte(`{"type":"admin_join_room_ack"}`)
 
 		// Welcomeメッセージにはクリーンな（接頭辞なしの）合言葉を含める
-		fullAdminPass := masterPasscode
-		if rawPass != "" {
-			fullAdminPass = masterPasscode + " " + rawPass
-		}
 		welcome, _ := json.Marshal(Message{
 			Type:     "welcome",
 			IsAdmin:  c.isAdmin,
 			IsHidden: c.isHidden,
 			Mode:     c.mode,
 			Role:     c.role,
-			Passcode: fullAdminPass,
+			Passcode: rawPass,
 			Content:  "ルームを移動しました",
 		})
 		c.send <- welcome
