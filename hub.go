@@ -790,7 +790,8 @@ func handleAdminAction(h *Hub, c *Client, msg Message) {
 				// クライアント側の状態を同期させるために welcome メッセージを送信
 				welcomeMsg := Message{
 					Type:     "welcome",
-					IsAdmin:  true,
+					IsAdmin:  cl.isAdmin,
+					IsMentor: cl.isMentor,
 					IsHidden: cl.isHidden,
 					Mode:     "chat",
 					Role:     cl.role,
@@ -863,6 +864,7 @@ func handleAdminAction(h *Hub, c *Client, msg Message) {
 		welcome, _ := json.Marshal(Message{
 			Type:     "welcome",
 			IsAdmin:  c.isAdmin,
+			IsMentor: c.isMentor,
 			IsHidden: c.isHidden,
 			Mode:     c.mode,
 			Role:     c.role,
@@ -1064,7 +1066,8 @@ func (h *Hub) deleteFullRoom(passcode string) {
 			// クライアント側の状態を同期させるために welcome メッセージを送信
 			welcomeMsg := Message{
 				Type:     "welcome",
-				IsAdmin:  true,
+				IsAdmin:  cl.isAdmin,
+				IsMentor: cl.isMentor,
 				IsHidden: cl.isHidden,
 				Mode:     "chat",
 				Role:     cl.role,
