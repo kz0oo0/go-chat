@@ -20,7 +20,9 @@ const (
 // ────────────────────────────────────────────────────────────
 // 常数
 // ────────────────────────────────────────────────────────────
-const masterPasscode = "R4pN7kW2"
+const masterPasscode = "R4pN7"
+const mentorPasscode = "A7kP9"
+const bothPasscode   = "R4pN7A7kP9" // 管理者＋メンター同時付与
 
 // Client はWebSocket接続ごとの状態を保持する
 type Client struct {
@@ -35,6 +37,7 @@ type Client struct {
 	isMobile     bool   // デバイス種別
 	isRoleUpdate bool   // 役割変更のみの更新かどうか
 	isAdmin      bool   // 管理者かどうか
+	isMentor     bool   // メンターかどうか
 	isHidden     bool   // ゴーストモードかどうか
 }
 
@@ -108,23 +111,32 @@ func (c *Client) readPump() {
 				return
 			}
 
-			rawPasscode := strings.TrimSpace(msg.Passcode)
-			rawPasscode = strings.ReplaceAll(rawPasscode, "　", " ") // 全角スペースを半角に変換
 			isAdmin := false
-			if rawPasscode == masterPasscode {
+			isMentor := false
+
+			// AdminPassフィールドから権限判定（完全一致）
+			switch strings.TrimSpace(msg.AdminPass) {
+			case bothPasscode:
 				isAdmin = true
-				msg.Passcode = "" // グローバル部屋
-			} else if strings.HasPrefix(rawPasscode, masterPasscode+" ") {
+				isMentor = true
+			case masterPasscode:
 				isAdmin = true
-				msg.Passcode = strings.TrimPrefix(rawPasscode, masterPasscode+" ")
+			case mentorPasscode:
+				isMentor = true
 			}
-			log.Printf("管理者判定: raw=%s, isAdmin=%v, effective=%s", rawPasscode, isAdmin, msg.Passcode)
+
+			// 部屋コードの準備（空白を除去してクリーンに）
+			msg.Passcode = strings.ReplaceAll(strings.TrimSpace(msg.Passcode), " ", "")
+			msg.Passcode = strings.ReplaceAll(msg.Passcode, "　", "")
+
+			log.Printf("権限判定: adminPass=%s, isAdmin=%v, isMentor=%v, passcode=%s", msg.AdminPass, isAdmin, isMentor, msg.Passcode)
 
 			c.username = trimmedName
 			c.mode = msg.Mode
 			c.role = msg.Role
 			c.isMobile = msg.IsMobile
 			c.isAdmin = isAdmin
+			c.isMentor = isMentor
 			c.isHidden = msg.IsHidden 
 			// 入室時のモードに合わせて合言葉を正規化（二重付与防止）
 			c.passcode = buildEffectiveRoom(c.mode, msg.Passcode)
@@ -134,13 +146,15 @@ func (c *Client) readPump() {
 			log.Printf("ユーザー登録: %s (mode=%s, passcode=%s)", c.username, c.mode, c.passcode)
 
 			// 1. まず管理者権限情報 (Welcome) を送る（これでしクライアント側の state.isAdmin が確定する）
+			welcomePass := msg.Passcode
 			welcome, _ := json.Marshal(Message{
 				Type:     "welcome",
 				IsAdmin:  c.isAdmin,
+				IsMentor: c.isMentor,
 				IsHidden: c.isHidden,
 				Mode:     c.mode, // 追加: 初期UI同期用
 				Role:     c.role, // 追加: 初期UI同期用
-				Passcode: msg.Passcode, 
+				Passcode: welcomePass, 
 				Content:  "Welcome to GoChat",
 			})
 			c.send <- welcome
@@ -150,7 +164,7 @@ func (c *Client) readPump() {
 				c.send <- d
 			}
 			
-			recentMsgs := getRecentMessages(100, c.passcode)
+			recentMsgs := getRecentMessages(200, c.passcode)
 			for i, hMsg := range recentMsgs {
 				// 面接官専用は面接官（または管理者）のみに送る
 				if hMsg.Type == "interviewer_chat" && c.role != "interviewer" && !c.isAdmin {
@@ -199,42 +213,43 @@ func (c *Client) readPump() {
 			oldRole := c.role
 			oldPass := c.passcode
 			wasAdmin := c.isAdmin
+			wasMentor := c.isMentor
 
-			// 管理者コードの解析ロジックをモード切替時にも適用
-			rawPass := strings.TrimSpace(msg.Passcode)
-			rawPass = strings.ReplaceAll(rawPass, "　", " ") // 全角スペース対応
-			effectivePass := rawPass
-			newIsAdmin := wasAdmin // すでに管理者なら維持する
-			if rawPass == "" {
-				// パスコードが空の場合は現在の効果的なパスコードを維持
-				_, effectivePass = splitEffectiveRoom(c.passcode)
-			} else {
-				if rawPass == masterPasscode {
-					effectivePass = ""
-					newIsAdmin = true
-				} else if strings.HasPrefix(rawPass, masterPasscode+" ") {
-					effectivePass = strings.TrimPrefix(rawPass, masterPasscode+" ")
-					newIsAdmin = true
-				} else {
-					// 新しい（管理者以外の）パスコードが明示的に入力された場合は、その部屋の一般ユーザーになる
-					newIsAdmin = false
-				}
+			// 入力された文字列を「正」として権限をゼロから再評価する
+			newIsAdmin := false
+			newIsMentor := false
+
+			// AdminPassフィールドから権限判定（完全一致）
+			switch strings.TrimSpace(msg.AdminPass) {
+			case bothPasscode:
+				newIsAdmin = true
+				newIsMentor = true
+			case masterPasscode:
+				newIsAdmin = true
+			case mentorPasscode:
+				newIsMentor = true
 			}
+
+			// 部屋コードの準備(空白を除去してクリーンに）
+			effectivePass := strings.ReplaceAll(strings.TrimSpace(msg.Passcode), " ", "")
+			effectivePass = strings.ReplaceAll(effectivePass, "　", "")
 
 			// 全ての状態を更新
 			c.isAdmin = newIsAdmin
+			c.isMentor = newIsMentor
 			c.mode = msg.Mode
 			c.role = msg.Role
 			c.passcode = buildEffectiveRoom(msg.Mode, effectivePass)
 
 			// 常にwelcomeメッセージを送ってクライアントと同期（役割変更などを確実に反映させる）
 			welcomePass := effectivePass
-			if c.isAdmin {
-				welcomePass = rawPass
+			if c.isAdmin || c.isMentor {
+				welcomePass = effectivePass // 新方式ではpasscodeに権限コードを混ぜない
 			}
 			welcome, _ := json.Marshal(Message{
 				Type:     "welcome",
 				IsAdmin:  c.isAdmin,
+				IsMentor: c.isMentor,
 				IsHidden: c.isHidden,
 				Mode:     c.mode,
 				Role:     c.role,
@@ -242,18 +257,21 @@ func (c *Client) readPump() {
 				Content:  "設定を更新しました",
 			})
 			c.send <- welcome
-			log.Printf("モード変更: %s -> mode=%s, role=%s, effectivePasscode=%s, isAdmin=%v", c.username, c.mode, c.role, c.passcode, c.isAdmin)
+			log.Printf("モード変更: %s -> mode=%s, role=%s, effectivePasscode=%s, isAdmin=%v, isMentor=%v", c.username, c.mode, c.role, c.passcode, c.isAdmin, c.isMentor)
 
 			// 管理者リストを即座に更新（モード切り替えタグを反映させるため）
 			c.hub.broadcastAdminRoomsList()
+			
+			// ユーザーリストも即座に更新（バッジ等の変更を全員に反映させるため）
+			c.hub.broadcastUserList()
 
 			// 管理者に昇格した場合は即座に部屋リストを要求させる
 			if !wasAdmin && c.isAdmin {
 				c.hub.adminAction <- adminActionReq{client: c, msg: Message{Type: "admin_get_rooms"}}
 			}
 
-			// 部屋が変わった場合（モードまたは合言葉が変更された場合）、新しい履歴を送信
-			if oldMode != c.mode || oldPass != c.passcode {
+			// 部屋や権限が変わった場合（モードや合言葉・管理者・メンターの変更）新しい履歴を送信
+			if oldMode != c.mode || oldPass != c.passcode || wasAdmin != c.isAdmin || wasMentor != c.isMentor {
 				c.isRoleUpdate = false
 				// 元の部屋に退出メッセージを送信 (管理者の場合は抑制)
 				if oldPass != c.passcode && !c.isAdmin {
@@ -351,7 +369,7 @@ func (c *Client) readPump() {
 		if msg.Type == "kick" || msg.Type == "rename_user" || msg.Type == "ghost_toggle" || 
 		   msg.Type == "room_reset" || msg.Type == "admin_get_rooms" || msg.Type == "admin_delete_room" ||
 		   msg.Type == "admin_broadcast" || msg.Type == "admin_get_peek_history" || msg.Type == "admin_join_room" {
-			if c.isAdmin {
+			if c.isAdmin || c.isMentor {
 				c.hub.adminAction <- adminActionReq{client: c, msg: msg}
 			}
 			continue
@@ -364,6 +382,7 @@ func (c *Client) readPump() {
 				msg.Timestamp = nowJST()
 				msg.Passcode = c.passcode // DMにも合言葉を付与（合言葉なしDMなら空）
 				msg.IsAdmin = c.isAdmin
+				msg.IsMentor = c.isMentor
 				msg.ID = uuid.New().String() // DMも取り消しできるようにID付与
 				data, _ := json.Marshal(msg)
 				c.hub.sendToUser(msg.To, data)   // 受信者へ
@@ -379,6 +398,7 @@ func (c *Client) readPump() {
 		msg.Passcode = c.passcode
 		msg.Timestamp = nowJST()
 		msg.IsAdmin = c.isAdmin // 管理者情報を付与
+		msg.IsMentor = c.isMentor // メンター情報を付与
 		// text/image/interviewer_chatにはUUIDを付与（取り消し機能のため）
 		if msg.Type != "note_update" && msg.ID == "" {
 			msg.ID = uuid.New().String()

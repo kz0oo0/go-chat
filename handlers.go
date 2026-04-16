@@ -31,6 +31,7 @@ type Message struct {
 	Mode      string   `json:"mode"`
 	To        string   `json:"to,omitempty"`
 	Passcode  string   `json:"passcode"`
+	AdminPass string   `json:"admin_pass,omitempty"`
 	Users     []User   `json:"users"`
 	Note           *GDNote  `json:"note,omitempty"`
 	NoHistory      bool     `json:"noHistory,omitempty"` // trueの場合、サーバーの履歴に保存しない
@@ -39,6 +40,7 @@ type Message struct {
 	IsMobile       bool     `json:"isMobile,omitempty"`      // デバイス種別判別用
 	IsAutoLogin    bool     `json:"isAutoLogin,omitempty"`   // 自動復帰・リロード時のフラグ
 	IsAdmin        bool     `json:"isAdmin,omitempty"`       // 管理者権限フラグ
+	IsMentor       bool     `json:"isMentor,omitempty"`      // メンター権限フラグ
 	IsHidden       bool     `json:"isHidden,omitempty"`      // ゴーストモード用フラグ
 }
 
@@ -49,6 +51,7 @@ type User struct {
 	Mode      string `json:"mode"`
 	IsOnline  bool   `json:"is_online"`
 	IsAdmin   bool   `json:"isAdmin,omitempty"`
+	IsMentor  bool   `json:"isMentor,omitempty"`
 	Timestamp string `json:"timestamp,omitempty"`
 }
 
@@ -109,7 +112,7 @@ func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 // 画像アップロード
 // ────────────────────────────────────────────────────────────
 
-const maxUploadSize = 5 * 1024 * 1024 // 5MB
+const maxUploadSize = 30 * 1024 * 1024 // 30MB
 
 var allowedExts = map[string]bool{
 	".jpg": true, ".jpeg": true, ".png": true, ".webp": true,
@@ -129,7 +132,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	// ボディサイズ制限
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize+1024)
 	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
-		respondError(w, http.StatusBadRequest, "ファイルサイズが大きすぎます（上限5MB）")
+		respondError(w, http.StatusBadRequest, "ファイルサイズが大きすぎます（上限30MB）")
 		return
 	}
 
@@ -140,16 +143,9 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// 拡張子チェック
-	ext := strings.ToLower(filepath.Ext(header.Filename))
-	if !allowedExts[ext] {
-		respondError(w, http.StatusBadRequest, "対応していないファイル形式です（jpg/jpeg/png/webp のみ）")
-		return
-	}
-
 	// MIMEタイプ検証（Content-Typeヘッダー or ファイル先頭バイト検出）
 	mimeType := header.Header.Get("Content-Type")
-	if mimeType == "" {
+	if mimeType == "" || mimeType == "application/octet-stream" {
 		buf := make([]byte, 512)
 		n, _ := file.Read(buf)
 		mimeType = http.DetectContentType(buf[:n])
@@ -158,11 +154,24 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	// パラメータを除去（例: "image/jpeg; charset=utf-8" → "image/jpeg"）
 	mimeType, _, _ = mime.ParseMediaType(mimeType)
 	if !allowedMIMEs[mimeType] {
-		respondError(w, http.StatusBadRequest, "対応していないファイル形式です")
+		respondError(w, http.StatusBadRequest, "対応していないファイル形式です（jpg/jpeg/png/webp のみ）")
 		return
 	}
 
-	// 一意なファイル名を生成（UUID + 元の拡張子）
+	// 拡張子を決定 (元の拡張子が正しい場合は使い、なければMIMEから補完)
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if !allowedExts[ext] {
+		switch mimeType {
+		case "image/jpeg":
+			ext = ".jpg"
+		case "image/png":
+			ext = ".png"
+		case "image/webp":
+			ext = ".webp"
+		}
+	}
+
+	// 一意なファイル名を生成（UUID + 拡張子）
 	id := uuid.New().String()
 	filename := id + ext
 	savePath := filepath.Join(dataDir, "uploads", filename)

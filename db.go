@@ -45,7 +45,8 @@ func initDB() {
 		mode TEXT,
 		to_user TEXT,
 		passcode TEXT,
-		is_admin INTEGER DEFAULT 0
+		is_admin INTEGER DEFAULT 0,
+		is_mentor INTEGER DEFAULT 0
 	);
 
 	CREATE TABLE IF NOT EXISTS users (
@@ -72,6 +73,7 @@ func initDB() {
 	// 既存DBに更新が必要なカラムを追加
 	_, _ = db.Exec("ALTER TABLE messages ADD COLUMN passcode TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE messages ADD COLUMN is_admin INTEGER DEFAULT 0")
+	_, _ = db.Exec("ALTER TABLE messages ADD COLUMN is_mentor INTEGER DEFAULT 0")
 	_, _ = db.Exec("ALTER TABLE gd_notes ADD COLUMN updated_at TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE gd_notes ADD COLUMN mode TEXT DEFAULT 'GroupDiscussion'") // 以前の gd 用にデフォルト設定
 
@@ -91,29 +93,26 @@ func cleanupOldData() {
 
 	// 各種期限の計算
 	cutoff3h := now.Add(-3 * time.Hour).Format(time.RFC3339)
-	cutoff1d := now.AddDate(0, 0, -1).Format(time.RFC3339)
 	cutoff14d := now.AddDate(0, 0, -14).Format(time.RFC3339)
 	cutoff30d := now.AddDate(0, 0, -30).Format(time.RFC3339)
 
 	// 1. 期限切れメッセージの削除 (時間ベース)
 	// 部屋コードなしの面接練習: 3時間
 	db.Exec("DELETE FROM messages WHERE passcode = '' AND mode = 'interview' AND timestamp < ?", cutoff3h)
-	// 画像メッセージ: 1日
-	db.Exec("DELETE FROM messages WHERE type = 'image' AND timestamp < ?", cutoff1d)
 	// 部屋コードあり: 14日
 	db.Exec("DELETE FROM messages WHERE passcode != '' AND timestamp < ?", cutoff14d)
 	// 部屋コードなし（通常等）: 30日
 	db.Exec("DELETE FROM messages WHERE passcode = '' AND mode != 'interview' AND timestamp < ?", cutoff30d)
 
 	// 2. 件数制限による削除
-	// 部屋コードあり: 最新100件、なし: 最新200件
+	// 部屋コードあり・なし共通: 最新200件
 	limitQuery := `
 		DELETE FROM messages 
 		WHERE id NOT IN (
 			SELECT id FROM (
 				SELECT id, passcode, ROW_NUMBER() OVER (PARTITION BY passcode ORDER BY timestamp DESC) as rn
 				FROM messages
-			) WHERE (passcode != '' AND rn <= 100) OR (passcode = '' AND rn <= 200)
+			) WHERE rn <= 200
 		)
 	`
 	resL, err := db.Exec(limitQuery)
@@ -134,8 +133,7 @@ func cleanupOldData() {
 		}
 	}
 
-	// 4. アップロード画像の物理削除 (1日以上経過したもの)
-	cleanupUploadFiles(now.Add(-24 * time.Hour))
+	// 4. アップロード画像の物理削除は行わない（画像は永続保持）
 }
 
 // cleanupUploadFiles は uploads ディレクトリ内の古いファイルを削除する
@@ -175,14 +173,18 @@ func saveMessage(m *Message) {
 	}
 	
 	query := `
-		INSERT OR REPLACE INTO messages (id, type, username, content, timestamp, role, mode, to_user, passcode, is_admin)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT OR REPLACE INTO messages (id, type, username, content, timestamp, role, mode, to_user, passcode, is_admin, is_mentor)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	isAdmInt := 0
 	if m.IsAdmin {
 		isAdmInt = 1
 	}
-	_, err := db.Exec(query, m.ID, m.Type, m.Username, m.Content, m.Timestamp, m.Role, m.Mode, m.To, m.Passcode, isAdmInt)
+	isMentorInt := 0
+	if m.IsMentor {
+		isMentorInt = 1
+	}
+	_, err := db.Exec(query, m.ID, m.Type, m.Username, m.Content, m.Timestamp, m.Role, m.Mode, m.To, m.Passcode, isAdmInt, isMentorInt)
 	if err != nil {
 		log.Printf("DB保存エラー: %v", err)
 	}
@@ -200,7 +202,7 @@ func markMessageDeleted(id string) {
 // getRecentMessages は履歴を LIMIT 件取得する（特定の合言葉に基づいたフィルタリング）
 func getRecentMessages(limit int, passcode string) []*Message {
 	query := `
-		SELECT id, type, username, content, timestamp, role, mode, to_user, passcode, is_admin 
+		SELECT id, type, username, content, timestamp, role, mode, to_user, passcode, is_admin, is_mentor 
 		FROM messages 
 		WHERE passcode = ? OR (type = 'dm' AND (username = ? OR to_user = ?))
 		ORDER BY timestamp DESC 
@@ -220,9 +222,9 @@ func getRecentMessages(limit int, passcode string) []*Message {
 		var m Message
 		// NULL回避のために sql.NullString などを経由するのが安全
 		var id, typ, user, cont, ts, role, mode, to, pc sql.NullString
-		var isAdmInt int
+		var isAdmInt, isMenInt int
 		
-		if err := rows.Scan(&id, &typ, &user, &cont, &ts, &role, &mode, &to, &pc, &isAdmInt); err != nil {
+		if err := rows.Scan(&id, &typ, &user, &cont, &ts, &role, &mode, &to, &pc, &isAdmInt, &isMenInt); err != nil {
 			log.Printf("履歴パースエラー: %v", err)
 			continue
 		}
@@ -236,6 +238,7 @@ func getRecentMessages(limit int, passcode string) []*Message {
 		m.To = to.String
 		m.Passcode = pc.String
 		m.IsAdmin = isAdmInt == 1
+		m.IsMentor = isMenInt == 1
 
 		msgs = append(msgs, &m)
 	}

@@ -35,10 +35,12 @@ const state = {
   activeDmUser: null,     // 現在DMを開いている相手のユーザー名
   dmHistory: {},          // 相手名 → DMメッセージ配列
   passcode: '',           // 部屋コード
+  adminPass: '',          // 管理者/メンターパスワード（ヘッダー入力欄）
   dmSelectedFiles: [],     // DMパネルの選択中画像
   unreadDms:      {},     // 相手名 → 未読数
   autoReconnectCount: 0,
   isAdmin:        false,  // 管理者かどうか
+  isMentor:       false,  // メンターかどうか
   isHidden:       false,  // ゴーストモードかどうか
   heartbeatTimer: null,   // Heartbeat(Ping)用タイマー
   lastPongTime:   0,      // 最後にPongを受け取った時刻
@@ -143,6 +145,9 @@ const el = {
   btnApplyMode:      $('btn-apply-mode'),
 
   // 管理者用
+  loginAdminPass:    $('login-admin-pass'),
+  headerAdminPass:   $('header-admin-pass'),
+  swAdminPass:       $('sw-admin-pass'),
   btnGhostToggle:    $('btn-ghost-toggle'),
   tabAdmin:          $('tab-admin'),
   adminPeekModal:    $('admin-peek-modal'),
@@ -311,10 +316,13 @@ async function joinChat(isAutoLogin = false) {
     }
   }
 
-  state.username = name;
-  state.passcode = el.inputPasscode.value.trim();
-  state.mode     = document.querySelector('input[name="mode"]:checked')?.value || 'chat';
-  state.role     = el.selectRole.value || '';
+  state.username  = name;
+  state.passcode  = el.inputPasscode.value.trim();
+  // ログイン画面のパスワード入力欄から読む（ヘッダーの要素はまだ表示されていないため）
+  state.adminPass = (el.loginAdminPass ? el.loginAdminPass.value.trim() : '') ||
+                   (el.headerAdminPass ? el.headerAdminPass.value.trim() : '');
+  state.mode      = document.querySelector('input[name="mode"]:checked')?.value || 'chat';
+  state.role      = el.selectRole.value || '';
 
   // 画面遷移
   el.loginScreen.classList.add('hidden');
@@ -349,14 +357,26 @@ function updateHeaderBadges() {
   }
 
   // 部屋コードバッジ
-  let displayPasscode = (state.passcode === 'R4pN7kW2') ? '' : state.passcode;
+  let displayPasscode = state.passcode || '';
+  displayPasscode = displayPasscode.replace(/^(GroupDiscussion|interview)\|/, '').trim();
   if (displayPasscode) {
-    // 内部的なプレフィックスをカットして表示
-    displayPasscode = displayPasscode.replace(/^(GroupDiscussion|interview)\|/, '');
     el.headerPasscodeBadge.textContent = `🔑 ${displayPasscode}`;
     el.headerPasscodeBadge.classList.remove('hidden');
   } else {
     el.headerPasscodeBadge.classList.add('hidden');
+  }
+
+  // 権限による右上のユーザープロファイル（ボタン全体）の縁取り処理（紫＝管理者、緑＝メンター、両方＝半分）
+  if (!el.logoutBtn) return;
+  // 一度すべて外す
+  el.logoutBtn.classList.remove('border-admin', 'border-mentor', 'border-both');
+  
+  if (state.isAdmin && state.isMentor) {
+    el.logoutBtn.classList.add('border-both');
+  } else if (state.isAdmin) {
+    el.logoutBtn.classList.add('border-admin');
+  } else if (state.isMentor) {
+    el.logoutBtn.classList.add('border-mentor');
   }
 }
 
@@ -631,14 +651,15 @@ function connectWebSocket(isAutoLogin = false) {
     el.reconnectToast.classList.add('hidden'); // 接続成功時にメッセージを隠す
 
     sendWsMessage({
-      type:     'join',
-      username: state.username,
-      mode:     state.mode,
-      role:     state.role,
-      passcode: state.passcode,
-      isMobile: isMobile(),
-      isHidden: state.isHidden, // 隠密状態をサーバーへ通知
-      isAutoLogin: isAutoLogin, // WebSocket側での重複チェックをスキップするフラグ
+      type:       'join',
+      username:   state.username,
+      mode:       state.mode,
+      role:       state.role,
+      passcode:   state.passcode,
+      admin_pass: state.adminPass,
+      isMobile:   isMobile(),
+      isHidden:   state.isHidden, // 隠密状態をサーバーへ通知
+      isAutoLogin: isAutoLogin,   // WebSocket側での重複チェックをスキップするフラグ
     });
 
     startHeartbeat(); // 接続成功時にHeartbeat開始
@@ -718,6 +739,7 @@ function handleMessage(msg) {
     const oldMode = state.mode;
 
     state.isAdmin = !!msg.isAdmin;
+    state.isMentor = !!msg.isMentor;
     state.isHidden = !!msg.isHidden;
     
     // サーバーから通知された現在の状態を一括反映
@@ -729,18 +751,8 @@ function handleMessage(msg) {
       // 合言葉から接頭辞を除去してクリーンな状態を保つ
       let cleanPass = msg.passcode.replace(/^(GroupDiscussion|interview)\|/, '');
       
-      // 管理者の場合、表示上の便宜として R4pN7kW2 プレフィックスを補完する
-      if (state.isAdmin) {
-        if (cleanPass === '') {
-          state.passcode = 'R4pN7kW2';
-        } else if (!cleanPass.startsWith('R4pN7kW2')) {
-          state.passcode = 'R4pN7kW2 ' + cleanPass;
-        } else {
-          state.passcode = cleanPass;
-        }
-      } else {
-        state.passcode = cleanPass;
-      }
+      // バックエンドからそのまま渡されたパスコードを正としてUIに反映する
+      state.passcode = cleanPass;
     }
     
     // もし合言葉やモードが以前と違う場合（強制移動時など）
@@ -869,6 +881,10 @@ function handleMessage(msg) {
       renderPeekHistory(msg.users);
       break;
 
+    case 'action_error':
+      showAlert(msg.content);
+      break;
+
     case 'error':
       // ポップアップでエラーを表示
       showAlert(msg.content);
@@ -886,12 +902,22 @@ function handleMessage(msg) {
    メッセージ表示
 ═══════════════════════════════════════════════════════════ */
 
-/** タイムスタンプを HH:MM 形式に変換 */
+/** タイムスタンプを HH:MM 形式に変換（24時間以上前なら月日も追加） */
 function formatTime(ts) {
   if (!ts) return '';
   try {
     const d = new Date(ts);
-    return d.toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit' });
+    const now = new Date();
+    const diffMs = now - d;
+    const timeStr = d.toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit' });
+    
+    // 24時間(86400000ミリ秒)以上前なら日付も表示
+    if (diffMs >= 24 * 60 * 60 * 1000) {
+      const month = d.getMonth() + 1;
+      const day = d.getDate();
+      return `${month}/${day} ${timeStr}`;
+    }
+    return timeStr;
   } catch { return ''; }
 }
 
@@ -912,13 +938,14 @@ function appendTextMessage(msg, container, isInterviewerChat = false) {
   
   if (msg.id) div.dataset.msgId = msg.id;
 
-  // 管理者ラベルの生成
-  const adminLabel = msg.isAdmin ? `<span class="chat-admin-badge" style="white-space: nowrap;">(管理者)</span>` : '';
+  // 管理者ラベルの生成 (なりすまし防止のためアイコン風の文字バッジ化)
+  const adminLabel = msg.isAdmin ? `<span class="chat-admin-badge" title="管理者" style="display:inline-flex; align-items:center; justify-content:center; background:var(--accent-dim); color:var(--accent-hover); border:1px solid var(--accent); font-size:10px; font-weight:bold; padding:2px 6px 1px 6px; border-radius:10px; margin-left:4px; line-height:1; vertical-align:middle;">管理者</span>` : '';
+  const mentorLabel = msg.isMentor ? `<span class="chat-mentor-badge" title="メンター" style="display:inline-flex; align-items:center; justify-content:center; background:rgba(34, 197, 94, 0.1); color:#22c55e; border:1px solid rgba(34, 197, 94, 0.4); font-size:10px; font-weight:bold; padding:2px 6px 1px 6px; border-radius:10px; margin-left:4px; line-height:1; vertical-align:middle;">メンター</span>` : '';
   const roleLabel = (msg.mode !== 'chat' && msg.role) ? `<span style="font-size:10px; opacity:0.8; margin-left:4px; font-weight:normal; white-space: nowrap;">(${ROLE_LABELS[msg.role] || msg.role})</span>` : '';
 
   div.innerHTML = `
     <div class="msg-content-wrap">
-      ${!mine ? `<div class="msg-meta"><span class="msg-meta-name" style="display:inline-flex; align-items:center; gap:2px; flex-wrap: wrap;">${escHtml(msg.username)}${adminLabel}${roleLabel}</span><span>${formatTime(msg.timestamp)}</span></div>` : ''}
+      ${!mine ? `<div class="msg-meta"><span class="msg-meta-name" style="display:inline-flex; align-items:center; gap:2px; flex-wrap: wrap;">${escHtml(msg.username)}${adminLabel}${mentorLabel}${roleLabel}</span><span>${formatTime(msg.timestamp)}</span></div>` : ''}
       <div class="msg-bubble">${escHtml(msg.content)}</div>
       ${mine ? `<div class="msg-meta"><span>${formatTime(msg.timestamp)}</span></div>` : ''}
     </div>
@@ -951,11 +978,12 @@ function appendImageMessage(msg, container, isInterviewerChat = false) {
   const contentWrap = document.createElement('div');
   contentWrap.className = 'msg-content-wrap';
   
-  const adminLabel = msg.isAdmin ? `<span class="chat-admin-badge">(管理者)</span>` : '';
+  const adminLabel = msg.isAdmin ? `<span class="chat-admin-badge" title="管理者" style="display:inline-flex; align-items:center; justify-content:center; background:var(--accent-dim); color:var(--accent-hover); border:1px solid var(--accent); font-size:10px; font-weight:bold; padding:2px 6px 1px 6px; border-radius:10px; margin-left:4px; line-height:1; vertical-align:middle;">管理者</span>` : '';
+  const mentorLabel = msg.isMentor ? `<span class="chat-mentor-badge" title="メンター" style="display:inline-flex; align-items:center; justify-content:center; background:rgba(34, 197, 94, 0.1); color:#22c55e; border:1px solid rgba(34, 197, 94, 0.4); font-size:10px; font-weight:bold; padding:2px 6px 1px 6px; border-radius:10px; margin-left:4px; line-height:1; vertical-align:middle;">メンター</span>` : '';
   const roleLabel = (msg.mode !== 'chat' && msg.role) ? `<span style="font-size:10px; opacity:0.8; margin-left:4px; font-weight:normal;">(${ROLE_LABELS[msg.role] || msg.role})</span>` : '';
 
   contentWrap.innerHTML = `
-    ${!mine ? `<div class="msg-meta"><span class="msg-meta-name">${escHtml(msg.username)}${adminLabel}${roleLabel}</span><span>${formatTime(msg.timestamp)}</span></div>` : ''}
+    ${!mine ? `<div class="msg-meta"><span class="msg-meta-name">${escHtml(msg.username)}${adminLabel}${mentorLabel}${roleLabel}</span><span>${formatTime(msg.timestamp)}</span></div>` : ''}
   `;
 
   const img = document.createElement('img');
@@ -975,8 +1003,8 @@ function appendImageMessage(msg, container, isInterviewerChat = false) {
 
   div.appendChild(contentWrap);
 
-  // 自分のメッセージに取り消しボタンを追加（画像も左側）
-  if (mine && msg.id) {
+  // 管理者、または自分のメッセージに取り消しボタンを追加（画像も左側）
+  if ((mine || state.isAdmin) && msg.id) {
     const actions = document.createElement('div');
     actions.className = 'msg-actions';
     actions.innerHTML = `<button class="btn-delete-msg" title="取り消す" onclick="requestDelete('${escHtml(msg.id)}')">&#x2715;</button>`;
@@ -1526,6 +1554,8 @@ function openModeSwitch() {
   el.swSelectRole.value = state.role;
   // 管理者の場合は常にコードを表示し、そうでなければ現在のパスコードをセット
   el.swInputPasscode.value = state.passcode || '';
+  // 管理パスワード入力欄に現在の state.adminPass を同期
+  if (el.swAdminPass) el.swAdminPass.value = state.adminPass || '';
 
   el.modeSwitchOverlay.classList.remove('hidden');
 }
@@ -1556,14 +1586,19 @@ function applyModeSwitch() {
   const newMode = document.querySelector('input[name="sw-mode"]:checked')?.value || 'chat';
   const newRole = el.swSelectRole.value || '';
   const newPass = el.swInputPasscode.value.trim();
+  // モード切替パネルのパスワードを state とヘッダー入力欄に反映
+  const newAdminPass = el.swAdminPass ? el.swAdminPass.value.trim() : state.adminPass;
+  state.adminPass = newAdminPass;
+  if (el.headerAdminPass) el.headerAdminPass.value = newAdminPass;
 
   // state の直接書き換えは行わず、サーバーからの welcome (handleMessage) を待って同期する
   // 変更の有無に関わらず、同期のためにサーバーへ通知を送る
   sendWsMessage({
-    type:     'mode_change',
-    mode:     newMode,
-    role:     newRole,
-    passcode: newPass,
+    type:       'mode_change',
+    mode:       newMode,
+    role:       newRole,
+    passcode:   newPass,
+    admin_pass: newAdminPass,
   });
 
   closeModeSwitch();
@@ -1574,6 +1609,15 @@ el.btnSwitchMode.addEventListener('click', openModeSwitch);
 el.btnCloseModeSwitch.addEventListener('click', closeModeSwitch);
 el.modeSwitchBackdrop.addEventListener('click', closeModeSwitch);
 el.btnApplyMode.addEventListener('click', applyModeSwitch);
+
+// スマホ等で入力枠をタップした際、カーソルが先頭に飛ぶのを防止して末尾にセットする
+el.swInputPasscode.addEventListener('focus', function() {
+  const len = this.value.length;
+  // ブラウザ側のデフォルトのフォーカス位置処理が終わった直後に末尾へ上書き修正する
+  setTimeout(() => {
+    this.setSelectionRange(len, len);
+  }, 10);
+});
 
 el.swModeRadios.forEach(radio => {
   radio.addEventListener('change', () => onSwModeChange(radio.value));
@@ -1623,8 +1667,10 @@ function updateUserList(users) {
     const unread = state.unreadDms[u.username] || 0;
     const unreadHtml = unread > 0 ? `<span class="unread-badge">${unread}</span>` : '';
 
-    // 管理者バッジ（ラベル形式）
-    const adminHtml = u.isAdmin ? '<span class="admin-badge">管理者</span>' : '';
+    // 管理者バッジ（ラベル形式のアイコン風バッジ）
+    const adminHtml = u.isAdmin ? '<span class="admin-badge" title="管理者" style="display:inline-flex; align-items:center; justify-content:center; background:var(--accent-dim); color:var(--accent-hover); border:1px solid var(--accent); font-size:10px; font-weight:bold; padding:2px 6px 1px 6px; border-radius:10px; margin-left:4px; line-height:1; vertical-align:middle;">管理者</span>' : '';
+    // メンターバッジ
+    const mentorHtml = u.isMentor ? '<span class="mentor-badge" title="メンター" style="display:inline-flex; align-items:center; justify-content:center; background:rgba(34, 197, 94, 0.1); color:#22c55e; border:1px solid rgba(34, 197, 94, 0.4); font-size:10px; font-weight:bold; padding:2px 6px 1px 6px; border-radius:10px; margin-left:4px; line-height:1; vertical-align:middle;">メンター</span>' : '';
 
     li.innerHTML = `
       <div class="user-status-dot"></div>
@@ -1637,8 +1683,9 @@ function updateUserList(users) {
         <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:2px;">
           ${roleHtml}
           ${adminHtml}
+          ${mentorHtml}
         </div>
-        ${(state.isAdmin && !isMe) ? `
+        ${((state.isAdmin && !isMe) || (state.isMentor && !isMe && !u.isAdmin)) ? `
           <div class="admin-user-actions" style="margin-top: 4px; display: flex; gap: 4px;">
             ${u.is_online ? `<button class="btn-rename-user" onclick="event.stopPropagation(); renameUser('${escHtml(u.username)}')">改名</button>` : ''}
             <button class="btn-kick-user" onclick="event.stopPropagation(); kickUser('${escHtml(u.username)}')">退場</button>
@@ -1655,6 +1702,7 @@ function updateUserList(users) {
     el.userList.appendChild(li);
   });
 }
+
 
 function openDmPanel(targetUser) {
   state.activeDmUser = targetUser;
@@ -1971,13 +2019,16 @@ function clearSecretUnread() {
 
 function saveLoginState() {
   const data = {
-    username: state.username,
-    mode:     state.mode,
-    role:     state.role,
-    passcode: state.passcode,
-    room:     state.currentRoom, // 追加
-    tab:      state.activeTab,   // 追加
-    isHidden: state.isHidden,    // 追加: 隠密状態を保存
+    username:  state.username,
+    mode:      state.mode,
+    role:      state.role,
+    passcode:  state.passcode,
+    adminPass: state.adminPass,
+    room:      state.currentRoom,
+    tab:       state.activeTab,
+    isHidden:  state.isHidden,
+    isAdmin:   state.isAdmin,
+    isMentor:  state.isMentor,
   };
   localStorage.setItem('gochat_auth', JSON.stringify(data));
 }
@@ -1989,6 +2040,16 @@ function loadLoginState() {
       const data = JSON.parse(saved);
       el.inputUsername.value = data.username || '';
       el.inputPasscode.value = data.passcode || '';
+      // 管理者パスワードをログイン画面入力欄とヘッダー入力欄に復元
+      if (data.adminPass) {
+        if (el.loginAdminPass) {
+          el.loginAdminPass.value = data.adminPass;
+        }
+        if (el.headerAdminPass) {
+          el.headerAdminPass.value = data.adminPass;
+        }
+        state.adminPass = data.adminPass;
+      }
       if (data.mode) {
         state.mode = data.mode;
         const radio = [...el.modeCards].find(r => r.value === data.mode);
@@ -2003,7 +2064,7 @@ function loadLoginState() {
       if (data.room) state.currentRoom = data.room;
       if (data.tab)  state.activeTab  = data.tab;
       
-      // 隠密モードの復元
+      // 隠密モード等の復元
       if (typeof data.isHidden === 'boolean') {
         state.isHidden = data.isHidden;
         if (el.btnGhostToggle) {
@@ -2011,6 +2072,10 @@ function loadLoginState() {
           el.btnGhostToggle.querySelector('span').textContent = state.isHidden ? '隠密ON' : '隠密OFF';
         }
       }
+      
+      // 権限の事前復元（UIのちらつき・外れを防止）
+      if (typeof data.isAdmin === 'boolean') state.isAdmin = data.isAdmin;
+      if (typeof data.isMentor === 'boolean') state.isMentor = data.isMentor;
 
       // 一般ユーザーとしてログインした場合に、古いlocalStorage情報で管理者UIが露出しないように即座に隠す
       setupAdminUI();
@@ -2383,9 +2448,15 @@ window.addEventListener('DOMContentLoaded', () => {
 
 /** 管理者UIの初期設定（降格対応も含む） */
 function setupAdminUI() {
-  if (state.isAdmin) {
-    // 管理者専用要素を強制表示
+  // ゴースト機能は管理者およびメンター両方に解放
+  if (state.isAdmin || state.isMentor) {
     if (el.btnGhostToggle) el.btnGhostToggle.classList.remove('hidden');
+  } else {
+    if (el.btnGhostToggle) el.btnGhostToggle.classList.add('hidden');
+  }
+
+  // その他の高度な管理機能（タブなど）は管理者専用
+  if (state.isAdmin) {
     if (el.tabAdmin) {
       el.tabAdmin.classList.remove('hidden');
       el.tabAdmin.style.setProperty('display', 'block', 'important'); // 強制表示を最優先
@@ -2486,8 +2557,7 @@ function setupAdminUI() {
       roomResetContainer.style.setProperty('display', 'block', 'important'); // 強制表示を最優先
     }
   } else {
-    // 非管理者の場合は全て隠す
-    if (el.btnGhostToggle)  el.btnGhostToggle.classList.add('hidden');
+    // 非管理者の場合
     if (el.tabAdmin) {
       el.tabAdmin.classList.add('hidden');
       el.tabAdmin.style.display = 'none';

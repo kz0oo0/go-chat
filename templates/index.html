@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=15">
+  <link rel="stylesheet" href="/static/style.css?v=20">
 </head>
 <body>
 
@@ -17,6 +17,13 @@
      ═══════════════════════════════════════════ -->
 <div id="login-screen" class="login-screen">
   <div class="login-card">
+    <!-- 管理パスワード入力欄（右上） -->
+    <div class="login-admin-pass-wrap" title="管理者・メンターパスワードを入力">
+      <svg class="header-admin-pass-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+      <input id="login-admin-pass" type="password" class="header-admin-pass-input" placeholder="管理パス" maxlength="30" autocomplete="new-password" spellcheck="false">
+    </div>
     <div class="login-logo">
       <span class="logo-icon" aria-hidden="true">💬</span>
       <h1 class="login-title">GoChat</h1>
@@ -79,7 +86,7 @@
           maxlength="20"
           autocomplete="off"
         >
-        <span class="form-hint">空欄の場合は共通ルームになります。<br><span style="color:var(--accent-hover)">💾 保存期間: 14日／100件</span></span>
+        <span class="form-hint">空欄の場合は共通ルームになります。<br><span style="color:var(--accent-hover)">💾 保存期間: 14日／200件</span></span>
       </div>
 
       <!-- 入室ボタン -->
@@ -402,6 +409,13 @@
   <div class="mode-switch-panel">
     <div class="mode-switch-header">
       <h2 class="mode-switch-title">モード切替</h2>
+      <!-- 管理パスワード入力欄 -->
+      <div class="header-admin-pass-wrap" title="管理者・メンターパスワードを入力" style="margin-left:auto;">
+        <svg class="header-admin-pass-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <input id="sw-admin-pass" type="password" class="header-admin-pass-input" placeholder="管理パス" maxlength="30" autocomplete="new-password" spellcheck="false">
+      </div>
       <button id="btn-close-mode-switch" class="modal-close" aria-label="閉じる">✕</button>
     </div>
 
@@ -434,7 +448,7 @@
         maxlength="20"
         autocomplete="off"
       >
-      <span class="form-hint" style="margin-top: 4px; display: block;">別室として隔離する場合に入力してください。<br><span style="color:var(--accent-hover)">💾 保存期間: 14日／100件</span></span>
+      <span class="form-hint" style="margin-top: 4px; display: block;">別室として隔離する場合に入力してください。<br><span style="color:var(--accent-hover)">💾 保存期間: 14日／200件</span></span>
     </div>
 
     <div id="sw-role-group" class="form-group hidden">
@@ -531,7 +545,7 @@
 </div>
 
 <!-- メインプログラムの読み込み（要素の後に置くことでDOM認識を確実にする） -->
-<script src="/static/app.js?v=205"></script>
+<script src="/static/app.js?v=209"></script>
 
 </body>
 </html>

@@ -35,6 +35,7 @@ type offlineUser struct {
 	Passcode string
 	LastSeen time.Time
 	IsAdmin  bool
+	IsMentor bool
 	IsHidden bool
 }
 
@@ -197,6 +198,7 @@ func (h *Hub) run() {
 								Passcode: client.passcode,
 								LastSeen: time.Now(),
 								IsAdmin:  client.isAdmin,
+								IsMentor: client.isMentor,
 								IsHidden: client.isHidden,
 							}
 							log.Printf("離席猶予開始: %s (スマホ: 5分間保持)", client.username)
@@ -241,6 +243,9 @@ func (h *Hub) run() {
 					Mode:     c.mode,
 					Passcode: c.passcode,
 					LastSeen: time.Now(),
+					IsAdmin:  c.isAdmin,
+					IsMentor: c.isMentor,
+					IsHidden: c.isHidden,
 				}
 				log.Printf("ステータス変更: %s -> 離席", c.username)
 			} else {
@@ -363,6 +368,9 @@ func (h *Hub) run() {
 				if !client.isAdmin {
 					client.isAdmin = off.IsAdmin
 				}
+				if !client.isMentor {
+					client.isMentor = off.IsMentor
+				}
 				if !client.isHidden {
 					client.isHidden = off.IsHidden
 				}
@@ -445,6 +453,7 @@ func (h *Hub) broadcastUserList() {
 					Mode:     other.mode,
 					IsOnline: true,
 					IsAdmin:  other.isAdmin,
+					IsMentor: other.isMentor,
 				})
 			}
 		}
@@ -560,24 +569,47 @@ func splitEffectiveRoom(passcode string) (string, string) {
 
 // handleAdminAction は管理者からの特別なコマンドを処理する
 func handleAdminAction(h *Hub, c *Client, msg Message) {
-	if !c.isAdmin {
-		log.Printf("不正な管理者操作試行: %s", c.username)
+	if !c.isAdmin && !c.isMentor {
+		log.Printf("不正な権限操作試行: %s", c.username)
 		return
+	}
+
+	// メンターはキックと改名のみ許可
+	if c.isMentor && !c.isAdmin {
+		if msg.Type != "kick" && msg.Type != "rename_user" {
+			log.Printf("メンターの権限外操作試行: %s (%s)", c.username, msg.Type)
+			return
+		}
 	}
 
 	switch msg.Type {
 	case "kick":
 		target := msg.Content // キック対象のユーザー名
 		h.mu.Lock()
-		tClient, ok := h.usernames[target]
+		tClient, isOnline := h.usernames[target]
+		offUser, isOffline := h.offlineUsers[target]
+
+		// メンターは管理者を操作できない
+		if c.isMentor && !c.isAdmin {
+			if (isOnline && tClient.isAdmin) || (isOffline && offUser.IsAdmin) {
+				h.mu.Unlock()
+				errMsg, _ := json.Marshal(Message{
+					Type:    "action_error",
+					Content: "管理者を退場させることはできません",
+				})
+				c.send <- errMsg
+				return
+			}
+		}
+
 		// オフラインユーザー（離席中）も削除
-		if _, exists := h.offlineUsers[target]; exists {
+		if isOffline {
 			delete(h.offlineUsers, target)
 			log.Printf("管理者 %s が離席中の %s をリストから削除しました", c.username, target)
 		}
 		h.mu.Unlock()
 
-		if ok && tClient != nil {
+		if isOnline && tClient != nil {
 			// ログアウト扱いで切断（これで unregister 時に猶予リストに入らなくなる）
 			tClient.forceLeave = true
 			
@@ -605,47 +637,78 @@ func handleAdminAction(h *Hub, c *Client, msg Message) {
 		}
 
 		h.mu.Lock()
-		client, ok := h.usernames[oldName]
-		if ok {
-			// usernamesマップのキーを張り替え
+		client, isOnline := h.usernames[oldName]
+		offUser, isOffline := h.offlineUsers[oldName]
+
+		// メンターは管理者を操作できない
+		if c.isMentor && !c.isAdmin {
+			if (isOnline && client.isAdmin) || (isOffline && offUser.IsAdmin) {
+				h.mu.Unlock()
+				errMsg, _ := json.Marshal(Message{
+					Type:    "action_error",
+					Content: "管理者を改名することはできません",
+				})
+				c.send <- errMsg
+				return
+			}
+		}
+
+		if !isOnline && !isOffline {
+			// どこにも存在しない場合は何もしない
+			h.mu.Unlock()
+			break
+		}
+
+		if !isOnline && isOffline {
+			h.mu.Unlock()
+			errMsg, _ := json.Marshal(Message{
+				Type:    "action_error",
+				Content: "ユーザーが離席中です",
+			})
+			c.send <- errMsg
+			return
+		}
+
+		// 改名対象のパスコードを取得
+		var targetPasscode string
+
+		// オンラインユーザーのusernamesを更新
+		if isOnline {
 			delete(h.usernames, oldName)
 			client.username = newName
 			h.usernames[newName] = client
-			
-			// DB更新 (メッセージ送信者名を一括置換)
-			renameUserInDB(oldName, newName)
-
-			// ルーム全員に通知
-			renameMsg, _ := json.Marshal(Message{
-				Type:     "user_renamed",
-				Username: oldName, // 旧名
-				Content:  newName, // 新名
-				Passcode: client.passcode,
-			})
-			h.mu.Unlock()
-			// broadcastRaw ではなく通常の broadcast チャンネルへ流すことで合言葉フィルタリングを適用
-			h.broadcast <- BroadcastEntry{data: renameMsg, msgType: "user_renamed"}
-			h.broadcastUserList()
-			log.Printf("管理者 %s が %s を %s に改名しました", c.username, oldName, newName)
-		} else {
-			h.mu.Unlock()
+			targetPasscode = client.passcode
 		}
+
+		// 離席中ユーザーのofflineUsersも更新（離席中でも改名を反映）
+		if isOffline {
+			offUser.Username = newName
+			delete(h.offlineUsers, oldName)
+			h.offlineUsers[newName] = offUser
+			if targetPasscode == "" {
+				targetPasscode = offUser.Passcode
+			}
+		}
+
+		// DB更新 (メッセージ送信者名を一括置換)
+		renameUserInDB(oldName, newName)
+
+		// ルーム全員に通知
+		renameMsg, _ := json.Marshal(Message{
+			Type:     "user_renamed",
+			Username: oldName, // 旧名
+			Content:  newName, // 新名
+			Passcode: targetPasscode,
+		})
+		h.mu.Unlock()
+		// broadcastRaw ではなく通常の broadcast チャンネルへ流すことで合言葉フィルタリングを適用
+		h.broadcast <- BroadcastEntry{data: renameMsg, msgType: "user_renamed"}
+		h.broadcastUserList()
+		log.Printf("管理者 %s が %s を %s に改名しました", c.username, oldName, newName)
 
 	case "ghost_toggle":
 		c.isHidden = !c.isHidden
 		log.Printf("管理者 %s のゴーストモード: %v", c.username, c.isHidden)
-
-		// 管理者自身へ新しいステータスを通知してUIを同期させる
-		welcome, _ := json.Marshal(Message{
-			Type:     "welcome",
-			IsAdmin:  c.isAdmin,
-			IsHidden: c.isHidden,
-			Mode:     c.mode,
-			Role:     c.role,
-			Passcode: buildEffectiveRoom(c.mode, ""), // 管理者向けなので合言葉はプレーン
-			Content:  "隠密モードを切り替えました",
-		})
-		c.send <- welcome
 
 		h.broadcastUserList()
 
@@ -819,7 +882,7 @@ func handleAdminAction(h *Hub, c *Client, msg Message) {
 		if d, err := json.Marshal(Message{Type: "history_sep", Content: "start"}); err == nil {
 			c.send <- d
 		}
-		recentMsgs := getRecentMessages(100, c.passcode)
+		recentMsgs := getRecentMessages(200, c.passcode)
 		for _, hMsg := range recentMsgs {
 			if hMsg.Type == "interviewer_chat" && c.role != "interviewer" && !c.isAdmin {
 				continue
